@@ -1,22 +1,29 @@
 <#
 .SYNOPSIS
-    DeepSeek AI Ghidra eklentisini derler, paketler ve kurar.
+    Compiles, packages, and installs the DeepSeek AI Ghidra extension.
 
 .DESCRIPTION
-    Bu betik Ghidra'nin kendi jar dosyalarini kullanarak eklentiyi (internet
-    gerektirmeden) javac ile derler, bir eklenti arsivi (zip) olusturur ve
-    istege bagli olarak dogrudan Ghidra kurulumunun icine kurar.
+    This script compiles the extension using Ghidra's internal jars (offline,
+    no internet connection required) via javac, creates an extension zip archive,
+    and optionally installs it directly into the local Ghidra installation.
 
 .PARAMETER GhidraDir
-    Ghidra kurulum dizini. Verilmezse GHIDRA_INSTALL_DIR ortam degiskeni,
-    yoksa asagidaki varsayilan yol kullanilir.
+    Ghidra installation directory. If omitted, GHIDRA_INSTALL_DIR is used,
+    or common installation locations are scanned automatically.
 
 .PARAMETER JavaHome
-    JDK 21+ kurulum dizini. Verilmezse JAVA_HOME, yoksa bilinen
-    Eclipse Adoptium yolu kullanilir.
+    JDK 21+ installation directory. If omitted, JAVA_HOME is used,
+    or standard JDK 21 installation locations are checked.
+
+.PARAMETER Author
+    Author name placed into extension.properties. Default is "Selim Calici".
 
 .PARAMETER NoInstall
-    Sadece derle ve paketle; Ghidra kurulumuna kopyalama.
+    Compile and package only; do not copy into the Ghidra installation directory.
+
+.PARAMETER RefreshTool
+    Forces re-extraction and generation of the DeepSeekAI.tool template
+    from Ghidra's default CodeBrowser.tool.
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\build.ps1
@@ -45,7 +52,7 @@ function Write-Warn2($text){ Write-Host "    $text" -ForegroundColor Yellow }
 # ---------------------------------------------------------------- Ghidra
 if (-not $GhidraDir) { $GhidraDir = $env:GHIDRA_INSTALL_DIR }
 if (-not $GhidraDir) {
-    Write-Step "Ghidra kurulumu araniyor..."
+    Write-Step "Searching for Ghidra installation..."
     $roots = @(
         (Join-Path $env:USERPROFILE "Desktop"),
         (Join-Path $env:USERPROFILE "Documents"),
@@ -63,21 +70,21 @@ if (-not $GhidraDir) {
             Sort-Object Name -Descending | Select-Object -First 1
         if ($candidate) {
             $GhidraDir = $candidate.FullName
-            Write-Ok "Bulundu: $GhidraDir"
+            Write-Ok "Found: $GhidraDir"
             break
         }
     }
 }
 if (-not $GhidraDir -or -not (Test-Path (Join-Path $GhidraDir "Ghidra\application.properties"))) {
-    throw ("Ghidra kurulumu bulunamadi. -GhidraDir parametresini ya da " +
-        "GHIDRA_INSTALL_DIR ortam degiskenini kullanin.")
+    throw ("Ghidra installation not found. Please specify -GhidraDir or set " +
+        "the GHIDRA_INSTALL_DIR environment variable.")
 }
 $GhidraDir = (Resolve-Path $GhidraDir).Path
 $GhidraVersion = (Select-String -Path (Join-Path $GhidraDir "Ghidra\application.properties") `
         -Pattern '^application\.version=(.*)$').Matches[0].Groups[1].Value.Trim()
 $GhidraRelease = (Select-String -Path (Join-Path $GhidraDir "Ghidra\application.properties") `
         -Pattern '^application\.release\.name=(.*)$').Matches[0].Groups[1].Value.Trim()
-Write-Step "Ghidra: $GhidraDir (surum $GhidraVersion $GhidraRelease)"
+Write-Step "Ghidra: $GhidraDir (version $GhidraVersion $GhidraRelease)"
 
 # ---------------------------------------------------------------- JDK
 if (-not $JavaHome) { $JavaHome = $env:JAVA_HOME }
@@ -93,18 +100,18 @@ if (-not $JavaHome -or -not (Test-Path (Join-Path $JavaHome "bin\javac.exe"))) {
     }
 }
 if (-not $JavaHome -or -not (Test-Path (Join-Path $JavaHome "bin\javac.exe"))) {
-    throw "JDK 21 bulunamadi. -JavaHome parametresi ile JDK 21 dizinini belirtin."
+    throw "JDK 21 not found. Specify the JDK 21 directory using the -JavaHome parameter."
 }
 $Javac = Join-Path $JavaHome "bin\javac.exe"
 $JarExe = Join-Path $JavaHome "bin\jar.exe"
 $javaVersion = (& $Javac -version 2>&1) -join " "
-Write-Step "Derleyici: $javaVersion"
+Write-Step "Compiler: $javaVersion"
 if ($javaVersion -notmatch "2[1-9]|3[0-9]") {
-    Write-Warn2 "UYARI: Ghidra 12 icin Java 21+ onerilir."
+    Write-Warn2 "WARNING: Java 21+ is recommended for Ghidra 12."
 }
 
-# ---------------------------------------------------------------- classpath
-Write-Step "Sinif yolu (classpath) hazirlaniyor..."
+# ---------------------------------------------------------------- Classpath
+Write-Step "Preparing classpath..."
 $jarPatterns = @(
     "Ghidra\Framework\*\lib\*.jar",
     "Ghidra\Features\*\lib\*.jar",
@@ -120,23 +127,21 @@ foreach ($pattern in $jarPatterns) {
     }
 }
 $jars = $jars | Sort-Object -Unique
-if ($jars.Count -eq 0) { throw "Ghidra jar dosyalari bulunamadi." }
-Write-Ok "$($jars.Count) jar dosyasi bulundu"
+if ($jars.Count -eq 0) { throw "Ghidra jar files not found." }
+Write-Ok "$($jars.Count) jar files found"
 $classPath = ($jars -join ";")
 
-# ---------------------------------------------------------------- derleme
-Write-Step "Kaynaklar derleniyor..."
+# ---------------------------------------------------------------- Compile
+Write-Step "Compiling sources..."
 if (Test-Path $BuildDir) { Remove-Item $BuildDir -Recurse -Force }
 $classesDir = Join-Path $BuildDir "classes"
 New-Item -ItemType Directory -Path $classesDir -Force | Out-Null
 
 $sources = @(Get-ChildItem -Path $SrcDir -Filter "*.java" -Recurse |
     ForEach-Object { $_.FullName })
-if ($sources.Count -eq 0) { throw "Derlenecek kaynak bulunamadi: $SrcDir" }
-Write-Ok "$($sources.Count) kaynak dosya"
+if ($sources.Count -eq 0) { throw "No source files found to compile in: $SrcDir" }
+Write-Ok "$($sources.Count) source files"
 
-# Not: kaynak listesi javac'a dogrudan arguman olarak verilir. '@argfile' yontemi
-# Turkce karakter iceren yollarda (orn. "Varsayilan Proje") bozulabiliyor.
 $oldPref = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 $javacOutput = & $Javac -encoding UTF-8 -nowarn -classpath $classPath -d $classesDir $sources 2>&1 |
@@ -145,19 +150,18 @@ $javacExit = $LASTEXITCODE
 $ErrorActionPreference = $oldPref
 if ($javacExit -ne 0) {
     Write-Host $javacOutput
-    throw "Derleme basarisiz (javac cikis kodu $javacExit)."
+    throw "Compilation failed (javac error code: $javacExit)."
 }
-Write-Ok "Derleme tamamlandi"
+Write-Ok "Compilation completed"
 
-# ---------------------------------------------------------------- .tool dosyasi
-Write-Step "Araç (tool) sablonu: $ExtName.tool"
+# ---------------------------------------------------------------- Tool template
+Write-Step "Tool template: $ExtName.tool"
 $toolDefaults = Join-Path $ResDir "defaultTools"
 New-Item -ItemType Directory -Path $toolDefaults -Force | Out-Null
 $toolFile = Join-Path $toolDefaults "$ExtName.tool"
 
 if ((Test-Path $toolFile) -and -not $RefreshTool) {
-    # Sablon depoda saklanir; boylece Gradle/CI derlemeleri de onu kullanir.
-    Write-Ok "Depodaki mevcut sablon kullaniliyor (yenilemek icin -RefreshTool)"
+    Write-Ok "Using existing template in repository (use -RefreshTool to regenerate)"
 }
 else {
     $publicReleaseJar = Join-Path $GhidraDir "Ghidra\Configurations\Public_Release\lib\Public_Release.jar"
@@ -166,7 +170,7 @@ else {
     try {
         $entry = $zip.Entries | Where-Object { $_.FullName -eq "defaultTools/CodeBrowser.tool" } |
             Select-Object -First 1
-        if (-not $entry) { throw "CodeBrowser.tool sablonu bulunamadi." }
+        if (-not $entry) { throw "CodeBrowser.tool template not found inside Public_Release.jar." }
         $reader = New-Object System.IO.StreamReader($entry.Open())
         $toolXml = $reader.ReadToEnd()
         $reader.Close()
@@ -178,14 +182,13 @@ else {
         "`$1`r`n            <INCLUDE CLASS=`"deepseekai.DeepSeekAIPlugin`" />"
     [System.IO.File]::WriteAllText($toolFile, $toolXml,
         (New-Object System.Text.UTF8Encoding($false)))
-    Write-Ok "Ghidra Core paketine deepseekai.DeepSeekAIPlugin eklendi"
+    Write-Ok "Added deepseekai.DeepSeekAIPlugin to Ghidra Core package"
 }
-if (-not (Test-Path $toolFile)) { throw "Araç sablonu olusturulamadi: $toolFile" }
+if (-not (Test-Path $toolFile)) { throw "Could not produce tool template: $toolFile" }
 
-# ---------------------------------------------------------------- jar
-Write-Step "Jar paketleniyor..."
+# ---------------------------------------------------------------- Jar packaging
+Write-Step "Packaging jar..."
 $jarFile = Join-Path $BuildDir "$ExtName.jar"
-# src/main/resources icerigi (defaultTools/DeepSeekAI.tool dahil) jar kokune kopyalanir.
 if (Test-Path $ResDir) {
     Get-ChildItem $ResDir -Force | ForEach-Object {
         Copy-Item $_.FullName -Destination $classesDir -Recurse -Force
@@ -199,12 +202,12 @@ $jarExit = $LASTEXITCODE
 $ErrorActionPreference = $oldPref
 if ($jarExit -ne 0) {
     Write-Host $jarOutput
-    throw "jar olusturulamadi."
+    throw "Failed to create jar archive."
 }
 Write-Ok (Split-Path $jarFile -Leaf)
 
-# ---------------------------------------------------------------- eklenti dizini
-Write-Step "Eklenti dizini hazirlaniyor..."
+# ---------------------------------------------------------------- Staging
+Write-Step "Preparing extension directory..."
 $stageDir = Join-Path $BuildDir "stage\$ExtName"
 $libDir = Join-Path $stageDir "lib"
 New-Item -ItemType Directory -Path $libDir -Force | Out-Null
@@ -216,23 +219,20 @@ if (Test-Path (Join-Path $ProjectRoot "LICENSE")) {
     Copy-Item (Join-Path $ProjectRoot "LICENSE") (Join-Path $stageDir "LICENSE") -Force
 }
 
-# extension.properties ve Module.manifest depo kokunden alinir; boylece
-# build.ps1 ile Gradle derlemesi ayni meta veriyi uretir.
 $rootModuleManifest = Join-Path $ProjectRoot "Module.manifest"
 if (-not (Test-Path $rootModuleManifest)) {
-    throw "Module.manifest bulunamadi: $rootModuleManifest"
+    throw "Module.manifest not found: $rootModuleManifest"
 }
 Copy-Item $rootModuleManifest (Join-Path $stageDir "Module.manifest") -Force
 
 $rootExtProps = Join-Path $ProjectRoot "extension.properties"
 if (-not (Test-Path $rootExtProps)) {
-    throw "extension.properties bulunamadi: $rootExtProps"
+    throw "extension.properties not found: $rootExtProps"
 }
-# extension.properties Ghidra tarafindan Latin-1 olarak okunur; ASCII disi
-# karakterleri temizliyoruz ki Turkce harfler bozulmasin.
+
 $authorAscii = ($Author -replace '[^\x20-\x7E]', '').Trim()
 if (-not $authorAscii) { $authorAscii = "unknown" }
-$extPropsText = [System.IO.File]::ReadAllText($rootExtProps, [System.Text.Encoding]::UTF8)
+$extPropsText = [System.IO.File]::ReadAllText($rootExtProps, (New-Object System.Text.UTF8Encoding($false)))
 $extPropsText = $extPropsText -replace '(?m)^author=.*$', "author=$authorAscii"
 [System.IO.File]::WriteAllText((Join-Path $stageDir "extension.properties"),
     $extPropsText, (New-Object System.Text.UTF8Encoding($false)))
@@ -240,20 +240,18 @@ $extPropsText = $extPropsText -replace '(?m)^author=.*$', "author=$authorAscii"
 $scriptsDir = Join-Path $ProjectRoot "ghidra_scripts"
 if (Test-Path $scriptsDir) {
     Copy-Item $scriptsDir (Join-Path $stageDir "ghidra_scripts") -Recurse -Force
-    Write-Ok "ghidra_scripts (teshis betikleri) eklendi"
+    Write-Ok "Included ghidra_scripts (diagnostic and utility scripts)"
 }
 Write-Ok "$stageDir"
 
-# ---------------------------------------------------------------- zip
-Write-Step "Dagitim arsivi (zip) olusturuluyor..."
+# ---------------------------------------------------------------- Zip packaging
+Write-Step "Creating distribution archive (zip)..."
 New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
 $stamp = (Get-Date).ToString("yyyyMMdd")
 $zipName = "ghidra_${GhidraVersion}_${GhidraRelease}_${stamp}_$ExtName.zip"
 $zipPath = Join-Path $DistDir $zipName
 if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
 
-# Not: Compress-Archive Windows'ta ters bolu ('\') yazar; Ghidra'nin zip okuyucusu
-# duz bolu ('/') bekler. Bu yuzden arsivi elle olusturuyoruz.
 function New-ZipFromDirectory($sourceDir, $targetZip) {
     Add-Type -AssemblyName System.IO.Compression
     $fileStream = [System.IO.File]::Open($targetZip, [System.IO.FileMode]::Create)
@@ -280,30 +278,25 @@ function New-ZipFromDirectory($sourceDir, $targetZip) {
                 }
                 $hasEntries = $true
             }
-            if (-not $hasEntries) { throw "Arsivlenecek dosya bulunamadi: $base" }
+            if (-not $hasEntries) { throw "No files found to archive in: $base" }
         }
         finally { $archive.Dispose() }
     }
     finally { $fileStream.Dispose() }
 }
 
-# Zip kokunde eklenti klasoru olmali: DeepSeekAI/extension.properties ...
 New-ZipFromDirectory (Split-Path $stageDir -Parent) $zipPath
 Write-Ok $zipPath
 
-# ---------------------------------------------------------------- kurulum
+# ---------------------------------------------------------------- Installation
 if (-not $NoInstall) {
-    Write-Step "Ghidra kurulumuna kopyalaniyor..."
+    Write-Step "Installing into Ghidra extensions directory..."
     $targetDir = Join-Path $GhidraDir "Ghidra\Extensions\$ExtName"
     if (Test-Path $targetDir) { Remove-Item $targetDir -Recurse -Force }
     Copy-Item $stageDir $targetDir -Recurse -Force
     Write-Ok $targetDir
 
-    Write-Step "Arac sablonu kullanici araclar klasorune kopyalaniyor..."
-    # Ghidra'nin kullanici ayar klasoru platforma gore degisir:
-    #   Windows : %APPDATA%\ghidra\ghidra_<surum>_<release>\tools
-    #   Linux/Mac: ~/.ghidra/.ghidra_<surum>_<release>/tools
-    # Ikisine de kopyalayalim; Ghidra hangisini kullaniyorsa bulur.
+    Write-Step "Copying tool template into user tools directory..."
     $toolDirs = @()
     if ($env:APPDATA) {
         $toolDirs += (Join-Path $env:APPDATA "ghidra\ghidra_${GhidraVersion}_${GhidraRelease}\tools")
@@ -316,22 +309,22 @@ if (-not $NoInstall) {
             Write-Ok (Join-Path $userTools "$ExtName.tool")
         }
         catch {
-            Write-Warn2 "Kopyalanamadi: $userTools ($($_.Exception.Message))"
+            Write-Warn2 "Could not copy to: $userTools ($($_.Exception.Message))"
         }
     }
 
     Write-Host ""
-    Write-Host "Kurulum tamamlandi. Ghidra'yi yeniden baslatin ve su adimlari izleyin:" -ForegroundColor Green
-    Write-Host "  1) Tools > DeepSeek AI > Ayarlar (API anahtari)...  -> anahtarinizi girin"
-    Write-Host "  2) Bir ASCII/ARM/x86 fonksiyonunun icine tiklayin"
-    Write-Host "  3) Tools > DeepSeek AI > Fonksiyonu Analiz Et"
+    Write-Host "Installation completed. Restart Ghidra and follow these steps:" -ForegroundColor Green
+    Write-Host "  1) Tools > DeepSeek AI > Settings (API Key)...  -> Enter your API key"
+    Write-Host "  2) Click inside any decompiled function"
+    Write-Host "  3) Tools > DeepSeek AI > Analyze Function"
     Write-Host ""
-    Write-Host "  Eklenti gorunmezse: File > Configure > (arama: DeepSeek) > DeepSeek AI isaretleyin."
+    Write-Host "  If the plugin does not appear: File > Configure > search 'DeepSeek' > check DeepSeek AI."
 }
 else {
     Write-Host ""
-    Write-Host "Paketleme tamamlandi (kurulum atlandi):" -ForegroundColor Green
-    Write-Host "  Eklenti arsivi : $zipPath"
-    Write-Host "  Derlenmis jar  : $jarFile"
-    Write-Host "  Kurmak icin    : File > Install Extensions... > '+' > zip dosyasini secin"
+    Write-Host "Packaging completed (installation skipped):" -ForegroundColor Green
+    Write-Host "  Extension archive : $zipPath"
+    Write-Host "  Compiled jar      : $jarFile"
+    Write-Host "  Manual install    : File > Install Extensions... > '+' > select zip file"
 }

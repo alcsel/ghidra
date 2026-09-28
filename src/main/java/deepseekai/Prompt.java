@@ -6,92 +6,93 @@
 package deepseekai;
 
 /**
- * DeepSeek API'sine gonderilecek istemleri (prompt) olusturur.
+ * Builds system and user prompts sent to the DeepSeek API.
  */
 public class Prompt {
 
 	private Prompt() {
-		// yardimci sinif
+		// utility class
 	}
 
-	/** Modelin uymasi gereken JSON semasi ve kurallari. */
+	/** Expected JSON schema and instructions for the model. */
 	public static String systemPrompt(DeepSeekConfig config) {
-		String language = DeepSeekConfig.isBlank(config.language) ? "Turkce" : config.language;
+		String language = DeepSeekConfig.isBlank(config.language) ? "English" : config.language;
 		return """
-			Sen kidemli bir tersine muhendislik (reverse engineering) ve yazilim analizi uzmanisin.
-			Sana Ghidra ile decompile edilmis bir fonksiyonun C benzeri sahte kodu (pseudocode),
-			sembol tablosu ve adres bilgileri verilecek.
+			You are a senior reverse engineering and software analysis expert.
+			You will receive C pseudocode of a function decompiled by Ghidra,
+			its symbol table, and address information.
 
-			GOREVIN
-			1. Fonksiyonun ne yaptigini ayrintili sekilde acikla.
-			2. Anlasilmasi zor, karmasik veya dikkat cekici kisimlari tespit edip yorum yaz.
-			3. Degiskenleri (parametreler ve yerel degiskenler) anlamli bicimde yeniden adlandir.
-			4. Mumkunse fonksiyon icin anlamli bir isim ve ozet yorum oner.
-			5. Emin olmadigin konulari acikca belirt.
+			YOUR TASK
+			1. Explain in detail what the function does.
+			2. Identify complex, tricky, or noteworthy logic and propose technical comments.
+			3. Suggest meaningful names for variables (parameters and local variables).
+			4. If appropriate, suggest a concise and meaningful function name and block comment.
+			5. Clearly note any uncertainties or ambiguities (do not hallucinate).
 
-			KURALLAR
-			- SADECE gecerli bir JSON nesnesi dondur. JSON disinda tek bir karakter bile yazma.
-			- Markdown kod blogu (```) kullanma. Aciklama metnini JSON'un icine koy.
-			- Sana verilen kodda satirlar [0x00401020] seklinde adres etiketleri ile baslar.
-			  Yorum onerirken "address" alanina bu etiketlerdeki adresi AYNEN yaz.
-			  Emin olmadigin adresler icin yorum onerisi verme.
-			- Uydurma yapma. Bilgi yetersizse "uncertainties" listesine ekle ve confidence dusur.
-			- Degisken isimleri: gecerli C tanimlayicisi, snake_case, 2-48 karakter,
-			  sadece harf/rakam/alt cizgi, rakamla baslamasin, C anahtar kelimesi olmasin.
-			  Ayni yeni ismi birden fazla degiskene verme.
-			- Isimlendirme yaparken degiskenin tipini, kullanim yerlerini ve cagrilan
-			  fonksiyonlari dikkate al. Ornek: strlen sonucu -> length, recv tamponu -> buffer.
-			- confidence: 0.0 (tahmin) ile 1.0 (kesin) arasinda bir sayi olsun.
-			- Yazacagin tum aciklama ve yorumlar %s dilinde olsun.
+			RULES
+			- Return ONLY a valid JSON object. Do not include any characters outside the JSON.
+			- Do NOT wrap your response in markdown code fences (```). Put the explanation inside the JSON.
+			- Lines in the decompiled code start with address tags like [0x00401020].
+			  When proposing comments, set the "address" field EXACTLY to this address.
+			  Do not propose comments for addresses you are not confident about.
+			- Do not hallucinate or make unfounded guesses. If information is insufficient,
+			  add items to "uncertainties" and lower confidence scores.
+			- Variable names: valid C identifier, snake_case, 2-48 characters,
+			  alphanumeric and underscores only, must not start with a digit, must not be a C keyword.
+			  Do not assign the same new name to multiple variables.
+			- Consider variable types, usage patterns, and called functions when choosing names.
+			  Example: strlen result -> length, recv buffer -> packet_buffer.
+			- confidence: a float between 0.0 (guess) and 1.0 (certain).
+			- Write all explanations, comments, and reasons in %s.
 
-			JSON SEMASI
+			JSON SCHEMA
 			{
-			  "summary": "fonksiyonun ne yaptigini anlatan ayrintili paragraf",
-			  "function_name": "onerdigin_fonksiyon_adi veya null",
-			  "function_comment": "fonksiyon giris noktasina eklenecek kisa blok yorumu",
+			  "summary": "detailed paragraph explaining what the function does",
+			  "function_name": "suggested_function_name or null",
+			  "function_comment": "brief block comment for the function entry point",
 			  "hard_parts": [
 			    {
-			      "address": "0x00401020 veya null",
-			      "explanation": "bu kisim neden zor veya onemli",
-			      "comment": "kod satirina eklenecek kisa yorum"
+			      "address": "0x00401020 or null",
+			      "explanation": "why this part is complex or significant",
+			      "comment": "short comment to place on the code line"
 			    }
 			  ],
 			  "line_comments": [
-			    { "address": "0x00401020", "comment": "kisa teknik yorum", "confidence": 0.9 }
+			    { "address": "0x00401020", "comment": "concise technical comment", "confidence": 0.9 }
 			  ],
 			  "variable_renames": [
 			    {
 			      "old_name": "uVar1",
 			      "new_name": "packet_length",
-			      "type": "int veya null",
-			      "reason": "neden bu isim",
+			      "type": "int or null",
+			      "reason": "rationale for this name",
 			      "confidence": 0.8
 			    }
 			  ],
-			  "uncertainties": [ "emin olmadigin nokta" ]
+			  "uncertainties": [ "points where you are uncertain" ]
 			}
 			""".formatted(language);
 	}
 
-	/** Analiz edilecek fonksiyonun detaylarini iceren kullanici istemi. */
+	/** User prompt containing context and decompiled code of the target function. */
 	public static String userPrompt(DecompiledContext context, DeepSeekConfig config) {
-		String language = DeepSeekConfig.isBlank(config.language) ? "Turkce" : config.language;
+		String language = DeepSeekConfig.isBlank(config.language) ? "English" : config.language;
 		StringBuilder sb = new StringBuilder();
 
-		sb.append("Asagidaki Ghidra fonksiyonunu analiz et ve yanitini ").append(language)
-				.append(" dilinde ver.\n\n");
+		sb.append("Analyze the following Ghidra function and provide your response in ")
+				.append(language).append(".\n\n");
 
-		sb.append("## FONKSIYON\n");
-		sb.append("Ad: ").append(context.function.getName()).append('\n');
-		sb.append("Giris adresi: 0x")
+		sb.append("## FUNCTION\n");
+		sb.append("Name: ").append(context.function.getName()).append('\n');
+		sb.append("Entry address: 0x")
 				.append(context.function.getEntryPoint().toString().replace(" ", ""))
 				.append('\n');
-		sb.append("Imza: ").append(context.signature).append('\n');
-		sb.append("Cagirdigi fonksiyonlar: ").append(context.calledFunctionsText()).append("\n\n");
+		sb.append("Signature: ").append(context.signature).append('\n');
+		sb.append("Called functions: ").append(context.calledFunctionsText()).append("\n\n");
 
-		sb.append("## DEGISKENLER (isimlendirme icin kullan)\n");
+		sb.append("## VARIABLES (use for renaming)\n");
 		if (context.symbols.isEmpty()) {
-			sb.append("(sembol bilgisi alinamadi)\n");
+			sb.append("(no symbol information available)\n");
 		}
 		else {
 			for (DecompiledContext.SymbolInfo symbol : context.symbols) {
@@ -100,18 +101,17 @@ public class Prompt {
 		}
 		sb.append('\n');
 
-		sb.append("## DECOMPILE EDILMIS KOD\n");
-		sb.append("(her satirin basindaki [0x...] etiketi o satirin adresidir)\n");
+		sb.append("## DECOMPILED CODE\n");
+		sb.append("(the [0x...] tag at the beginning of each line is the address of that line)\n");
 		sb.append("```c\n");
 		sb.append(context.annotatedCode);
 		sb.append("```\n\n");
 
 		if (context.codeTruncated) {
-			sb.append("NOT: Kod uzunlugu nedeniyle kisaltildi; sadece gosterilen kisim hakkinda ")
-					.append("yorum yap.\n\n");
+			sb.append("NOTE: Code truncated due to length; only comment on the displayed portion.\n\n");
 		}
 
-		sb.append("Simdi yalnizca JSON dondur.");
+		sb.append("Now return JSON only.");
 		return sb.toString();
 	}
 }

@@ -16,7 +16,7 @@ import ghidra.util.task.Task;
 import ghidra.util.task.TaskMonitor;
 
 /**
- * Toplu AI analizini arka planda calistiran Ghidra gorevi.
+ * Background task running batch AI analysis via {@link BatchAiEngine}.
  */
 public class BatchAiTask extends Task {
 
@@ -28,7 +28,7 @@ public class BatchAiTask extends Task {
 
 	public BatchAiTask(DeepSeekAIPlugin plugin, Program program, DeepSeekConfig config,
 			BatchAiOptions options, List<Function> functions) {
-		super("DeepSeek AI: toplu analiz (" + functions.size() + " fonksiyon)", true, true, false);
+		super("DeepSeek AI: Batch Analysis", true, true, false);
 		this.plugin = plugin;
 		this.program = program;
 		this.config = config;
@@ -37,21 +37,17 @@ public class BatchAiTask extends Task {
 	}
 
 	@Override
-	public void run(TaskMonitor monitor) throws CancelledException {
-		BatchAiEngine.Result result;
+	public void run(TaskMonitor monitor) {
 		try {
-			result = new BatchAiEngine(program, config, options).run(functions, monitor);
+			BatchAiEngine.Result result =
+				new BatchAiEngine(program, config, options).run(functions, monitor);
+			SwingUtilities.invokeLater(() -> plugin.batchFinished(program, result));
 		}
 		catch (CancelledException e) {
-			SwingUtilities.invokeLater(() -> plugin.showInfo(
-				"Toplu analiz iptal edildi.\n\nO ana kadar yapilan degisiklikler ve onbellek " +
-					"korundu. Kaldiginiz yerden devam etmek icin tekrar baslatabilirsiniz."));
-			return;
+			plugin.showInfo("Batch analysis was cancelled.");
 		}
 		catch (Throwable t) {
-			SwingUtilities.invokeLater(() -> plugin.showError("Toplu analiz basarisiz oldu.", t));
-			return;
+			plugin.showError("Batch analysis failed: " + t.getMessage(), t);
 		}
-		SwingUtilities.invokeLater(() -> plugin.batchFinished(program, result));
 	}
 }

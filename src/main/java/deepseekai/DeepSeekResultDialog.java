@@ -6,7 +6,6 @@
 package deepseekai;
 
 import java.awt.BorderLayout;
-import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
@@ -32,8 +31,10 @@ import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Program;
 
 /**
- * DeepSeek analiz sonuclarini gosteren ve kullanicinin secerek uygulamasini
- * saglayan pencere.
+ * Dialog displaying analysis suggestions returned by DeepSeek.
+ * <p>
+ * The user can review the summary, variable renames, line comments, complex blocks,
+ * and select which modifications to apply before committing them to the program.
  */
 public class DeepSeekResultDialog extends JDialog {
 
@@ -42,13 +43,11 @@ public class DeepSeekResultDialog extends JDialog {
 	private final DeepSeekAIPlugin plugin;
 	private final Program program;
 	private final Function function;
-	private final AnalysisOutcome outcome;
 	private final DecompiledContext context;
+	private final AnalysisOutcome outcome;
 
 	private final DefaultTableModel renameModel;
 	private final DefaultTableModel commentModel;
-	private final JTable renameTable;
-	private final JTable commentTable;
 	private final JCheckBox renameFunctionBox;
 	private final JCheckBox functionCommentBox;
 	private final JLabel selectionLabel;
@@ -64,40 +63,58 @@ public class DeepSeekResultDialog extends JDialog {
 		this.context = context;
 		this.outcome = outcome;
 
-		setTitle("DeepSeek AI - " + function.getName());
-		setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+		setTitle(function.getName() + " - DeepSeek AI Analysis");
+		setModal(false);
 		setLayout(new BorderLayout());
 
-		add(buildHeader(), BorderLayout.NORTH);
-
 		renameModel = buildRenameModel();
-		renameTable = buildTable(renameModel);
 		commentModel = buildCommentModel();
-		commentTable = buildTable(commentModel);
 
-		JTabbedPane tabs = new JTabbedPane();
-		tabs.addTab("Aciklama", scrollable(textArea(outcome.summary, false)));
-		tabs.addTab("Yorumlar (" + outcome.lineComments.size() + ")", scrollable(commentTable));
-		tabs.addTab("Degiskenler (" + outcome.varRenames.size() + ")", scrollable(renameTable));
-		tabs.addTab("Zor Kisimlar (" + outcome.hardParts.size() + ")",
-			scrollable(textArea(hardPartsText(), false)));
-		tabs.addTab("Belirsizlikler (" + outcome.uncertainties.size() + ")",
-			scrollable(textArea(uncertaintiesText(), false)));
-		tabs.addTab("Ham Yanit", scrollable(textArea(outcome.rawResponse, true)));
-
-		add(tabs, BorderLayout.CENTER);
-
-		renameFunctionBox =
-			new JCheckBox("Fonksiyonu yeniden adlandir: " + displayFunctionName(), false);
-		functionCommentBox = new JCheckBox("Fonksiyon yorumunu (blok) uygula", true);
+		renameFunctionBox = new JCheckBox(
+			"Rename function: " + displayFunctionName(),
+			!outcome.functionName.isEmpty());
+		functionCommentBox = new JCheckBox(
+			"Set function entry comment",
+			!outcome.functionComment.isEmpty() || !outcome.summary.isEmpty());
 		selectionLabel = new JLabel();
 
+		add(buildHeader(), BorderLayout.NORTH);
+		add(buildTabs(), BorderLayout.CENTER);
 		add(buildFooter(), BorderLayout.SOUTH);
 
 		updateSelectionLabel();
-		setPreferredSize(new Dimension(1150, 780));
-		pack();
+		setSize(880, 600);
 		setLocationRelativeTo(null);
+	}
+
+	private JTabbedPane buildTabs() {
+		JTabbedPane tabs = new JTabbedPane();
+
+		// 1. Summary
+		tabs.addTab("Summary", scrollable(textArea(outcome.summary, false)));
+
+		// 2. Variable Renames
+		JTable renameTable = buildTable(renameModel);
+		tabs.addTab("Variable Renames (" + outcome.varRenames.size() + ")",
+			scrollable(renameTable));
+
+		// 3. Line Comments
+		JTable commentTable = buildTable(commentModel);
+		tabs.addTab("Line Comments (" + outcome.lineComments.size() + ")",
+			scrollable(commentTable));
+
+		// 4. Complex Blocks
+		tabs.addTab("Complex Blocks (" + outcome.hardParts.size() + ")",
+			scrollable(textArea(hardPartsText(), false)));
+
+		// 5. Uncertainties
+		tabs.addTab("Uncertainties (" + outcome.uncertainties.size() + ")",
+			scrollable(textArea(uncertaintiesText(), false)));
+
+		// 6. Raw Response
+		tabs.addTab("Raw Response", scrollable(textArea(outcome.rawResponse, true)));
+
+		return tabs;
 	}
 
 	private JPanel buildHeader() {
@@ -111,7 +128,7 @@ public class DeepSeekResultDialog extends JDialog {
 		title.setAlignmentX(LEFT_ALIGNMENT);
 		panel.add(title);
 
-		JLabel detail = new JLabel("Imza: " + context.signature);
+		JLabel detail = new JLabel("Signature: " + context.signature);
 		detail.setAlignmentX(LEFT_ALIGNMENT);
 		panel.add(detail);
 
@@ -122,8 +139,8 @@ public class DeepSeekResultDialog extends JDialog {
 		}
 		if (!outcome.parsedFromJson) {
 			JLabel warn = new JLabel(
-				"UYARI: Yanit JSON olarak cozumlenemedi, ham metin gosteriliyor. " +
-					"Modeli veya temperature ayarini degistirmeyi deneyin.");
+				"WARNING: Response could not be parsed as JSON, showing raw text. " +
+					"Try changing the model or temperature setting.");
 			warn.setAlignmentX(LEFT_ALIGNMENT);
 			panel.add(warn);
 		}
@@ -132,7 +149,7 @@ public class DeepSeekResultDialog extends JDialog {
 	}
 
 	private String displayFunctionName() {
-		return outcome.functionName.isEmpty() ? "(oneri yok)" : outcome.functionName;
+		return outcome.functionName.isEmpty() ? "(no suggestion)" : outcome.functionName;
 	}
 
 	private JPanel buildFooter() {
@@ -147,13 +164,13 @@ public class DeepSeekResultDialog extends JDialog {
 		outer.add(checks, BorderLayout.NORTH);
 
 		JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
-		JButton applySelected = new JButton("Secilenleri Uygula");
+		JButton applySelected = new JButton("Apply Selected");
 		applySelected.addActionListener(e -> apply(true));
-		JButton selectAll = new JButton("Tumunu Sec");
+		JButton selectAll = new JButton("Select All");
 		selectAll.addActionListener(e -> setAll(true));
-		JButton selectNone = new JButton("Secimi Kaldir");
+		JButton selectNone = new JButton("Deselect All");
 		selectNone.addActionListener(e -> setAll(false));
-		JButton close = new JButton("Kapat");
+		JButton close = new JButton("Close");
 		close.addActionListener(e -> dispose());
 
 		buttons.add(applySelected);
@@ -184,7 +201,7 @@ public class DeepSeekResultDialog extends JDialog {
 
 	private DefaultTableModel buildRenameModel() {
 		DefaultTableModel model = new DefaultTableModel(new Object[] {
-			"Uygula", "Eski ad", "Yeni ad", "Tip", "Guven", "Gerekce"
+			"Apply", "Old Name", "New Name", "Type", "Confidence", "Reason"
 		}, 0) {
 			private static final long serialVersionUID = 1L;
 
@@ -212,7 +229,7 @@ public class DeepSeekResultDialog extends JDialog {
 
 	private DefaultTableModel buildCommentModel() {
 		DefaultTableModel model = new DefaultTableModel(new Object[] {
-			"Uygula", "Adres", "Yorum", "Guven"
+			"Apply", "Address", "Comment", "Confidence"
 		}, 0) {
 			private static final long serialVersionUID = 1L;
 
@@ -256,7 +273,7 @@ public class DeepSeekResultDialog extends JDialog {
 		}
 	}
 
-	/** Tablodaki isaretleri sonuca geri yazar. */
+	/** Synchronizes table checkboxes back to outcome items. */
 	private void syncFromTables() {
 		for (int row = 0; row < renameModel.getRowCount() && row < outcome.varRenames.size();
 				row++) {
@@ -284,7 +301,7 @@ public class DeepSeekResultDialog extends JDialog {
 	private void updateSelectionLabel() {
 		int renames = outcome.selectedRenames().size();
 		int comments = outcome.selectedComments().size();
-		selectionLabel.setText("   " + renames + " degisken, " + comments + " yorum secili");
+		selectionLabel.setText("   " + renames + " variables, " + comments + " comments selected");
 	}
 
 	private static String formatConfidence(double confidence) {
@@ -293,16 +310,16 @@ public class DeepSeekResultDialog extends JDialog {
 
 	private String hardPartsText() {
 		if (outcome.hardParts.isEmpty()) {
-			return "(Model anlasilmasi zor bir kisim bildirmedi.)";
+			return "(Model reported no complex sections.)";
 		}
 		StringBuilder sb = new StringBuilder();
 		for (AnalysisOutcome.HardPart part : outcome.hardParts) {
 			sb.append("* ").append(part.address.isEmpty() ? "-" : part.address).append('\n');
 			if (!part.explanation.isEmpty()) {
-				sb.append("  Neden: ").append(part.explanation).append('\n');
+				sb.append("  Reason: ").append(part.explanation).append('\n');
 			}
 			if (!part.comment.isEmpty()) {
-				sb.append("  Onerilen yorum: ").append(part.comment).append('\n');
+				sb.append("  Suggested comment: ").append(part.comment).append('\n');
 			}
 			sb.append('\n');
 		}
@@ -311,7 +328,7 @@ public class DeepSeekResultDialog extends JDialog {
 
 	private String uncertaintiesText() {
 		if (outcome.uncertainties.isEmpty()) {
-			return "(Model belirsizlik bildirmedi.)";
+			return "(Model reported no uncertainties.)";
 		}
 		StringBuilder sb = new StringBuilder();
 		for (String item : outcome.uncertainties) {
@@ -342,7 +359,7 @@ public class DeepSeekResultDialog extends JDialog {
 		boolean renameFn = renameFunctionBox.isSelected();
 		boolean setComment = functionCommentBox.isSelected();
 		if (renames.isEmpty() && comments.isEmpty() && !renameFn && !setComment) {
-			plugin.showInfo("Uygulanacak bir sey secilmedi.");
+			plugin.showInfo("Nothing selected to apply.");
 			return;
 		}
 		applying = true;

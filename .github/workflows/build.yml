@@ -1,8 +1,8 @@
 name: Build Extension
 
-# Bu is akisi eklentiyi Ghidra'nin kendi Gradle betigi ile derler.
-# - Her push/PR'da derlemenin saglam oldugunu dogrular.
-# - 'v*' ile baslayan bir etiket (tag) atildiginda olusan zip'i Release'e ekler.
+# This workflow builds the extension using Ghidra's official Gradle build script.
+# - Validates build integrity on every push and pull request.
+# - Publishes the resulting extension zip to GitHub Releases when a 'v*' tag is pushed.
 
 on:
   push:
@@ -11,8 +11,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 env:
-  # Ghidra surumunu buradan degistirebilirsiniz.
+  # Target Ghidra version
   GHIDRA_VERSION: '12.1.2'
 
 jobs:
@@ -20,49 +23,53 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Depoyu al
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: JDK 21 kur
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
 
-      - name: Ghidra indir
+      - name: Download Ghidra
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           api="https://api.github.com/repos/NationalSecurityAgency/ghidra/releases?per_page=100"
-          url=$(curl -sSL "$api" \
-            | grep -oP "\"browser_download_url\":\s*\"\K[^\"]*ghidra_${GHIDRA_VERSION}_PUBLIC[^\"]*\.zip" \
-            | head -n1 || true)
+          auth_header=()
+          if [ -n "${GITHUB_TOKEN:-}" ]; then
+            auth_header=(-H "Authorization: Bearer $GITHUB_TOKEN")
+          fi
+          url=$(curl -sSL "${auth_header[@]}" "$api"             | grep -oP '"browser_download_url":\s*"\K[^"]*ghidra_'${GHIDRA_VERSION}'_PUBLIC[^"]*\.zip'             | head -n1 || true)
           if [ -z "${url:-}" ]; then
-            echo "::error::Ghidra ${GHIDRA_VERSION} surumu icin indirme baglantisi bulunamadi."
-            echo "Ghidra surumunu '.github/workflows/build.yml' icindeki GHIDRA_VERSION ile guncelleyin."
+            echo "::error::Could not find release download URL for Ghidra ${GHIDRA_VERSION}."
+            echo "Please verify the GHIDRA_VERSION in .github/workflows/build.yml."
             exit 1
           fi
-          echo "Indiriliyor: $url"
+          echo "Downloading: $url"
           curl -sSL -o ghidra.zip "$url"
           unzip -q ghidra.zip
           ghidra_dir="$(find . -maxdepth 1 -type d -name "ghidra_${GHIDRA_VERSION}_PUBLIC" | head -n1)"
           echo "GHIDRA_INSTALL_DIR=$PWD/${ghidra_dir#./}" >> "$GITHUB_ENV"
 
-      - name: Eklentiyi derle
+      - name: Build extension
         run: |
           chmod +x ./gradlew
           ./gradlew --no-daemon --stacktrace buildExtension
 
-      - name: Cikti dosyalarini goster
+      - name: List distribution artifacts
         run: ls -la dist/
 
-      - name: Artefakti yukle
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: DeepSeekAI-ghidra-extension
           path: dist/*.zip
           if-no-files-found: error
 
-      - name: Release'e ekle
+      - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:

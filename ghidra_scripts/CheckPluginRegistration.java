@@ -1,22 +1,23 @@
 /* ###
  * DeepSeek AI - Ghidra Extension
  *
- * Teshis: eklenti sinifinin Ghidra'nin plugin/paket kayit mekanizmasina
- * girip girmedigini kontrol eder. "File > Configure" listesinde gorunmeme
- * sorununu teshis etmek icin yazildi.
+ * Diagnostic script: investigates why DeepSeekAIPlugin is or is not visible in the GUI.
  *
- * Ghidra'da : Window > Script Manager > CheckPluginRegistration > Run
- * Headless  : analyzeHeadless ... -postScript CheckPluginRegistration.java
+ * Ghidra: Window > Script Manager > CheckPluginRegistration > Run
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  */
 import java.lang.reflect.Constructor;
 import java.util.List;
 
+import ghidra.app.plugin.core.colorizer.ColorizingServicePlugin;
 import ghidra.app.script.GhidraScript;
+import ghidra.framework.model.Tool;
 import ghidra.framework.plugintool.Plugin;
-import ghidra.framework.plugintool.util.DefaultPluginsConfiguration;
-import ghidra.framework.plugintool.util.PluginDescription;
+import ghidra.framework.plugintool.PluginConfigurationModel;
+import ghidra.framework.plugintool.PluginDescription;
+import ghidra.framework.plugintool.PluginTool;
+import ghidra.framework.plugintool.dialog.DefaultPluginsConfiguration;
 import ghidra.framework.plugintool.util.PluginPackage;
 import ghidra.util.classfinder.ClassSearcher;
 
@@ -24,93 +25,84 @@ public class CheckPluginRegistration extends GhidraScript {
 
 	@Override
 	protected void run() throws Exception {
-		println("=== Plugin kayit kontrolu ===");
+		println("=== DeepSeek AI Plugin Registration Diagnostic ===");
 
-		// 1) ClassSearcher eklenti sinifini buluyor mu?
-		List<Class<? extends Plugin>> pluginClasses = ClassSearcher.getClasses(Plugin.class);
-		println("ClassSearcher toplam plugin sinifi : " + pluginClasses.size());
-		Class<? extends Plugin> mine = null;
-		for (Class<? extends Plugin> c : pluginClasses) {
-			if (c.getName().startsWith("deepseekai")) {
-				mine = c;
-				println("  -> bulundu: " + c.getName());
-			}
-		}
-		if (mine == null) {
-			println("SONUC: Eklenti sinifi ClassSearcher'da YOK (jar classpath'te degil).");
-			return;
-		}
+		// 1) Active tool inspection
+		PluginTool activeTool = null;
+		Tool[] tools = state.getTool().getToolFrame().getToolkit() != null ? null : null;
+		activeTool = (PluginTool) state.getTool();
+		println("Active tool: " + (activeTool == null ? "NULL" : activeTool.getName()));
 
-		// 2) PluginDescription olusturulabiliyor mu?
-		PluginDescription description = null;
-		try {
-			description = PluginDescription.getPluginDescription(mine);
-			println("PluginDescription olustu.");
-			println("  ad       : " + description.getName());
-			println("  kategori : " + description.getCategory());
-			println("  durum    : " + description.getStatus());
-			println("  modul    : " + description.getModuleName());
-		}
-		catch (Throwable t) {
-			println("HATA: PluginDescription olusturulamadi: " + t);
-		}
-
-		// 3) Paket cozumlenebiliyor mu? (Configure listesi paketlere gore gruplanir)
-		if (description != null) {
-			try {
-				PluginPackage pkg = description.getPluginPackage();
-				if (pkg == null) {
-					println("HATA: getPluginPackage() NULL dondu -> Configure listesinde gorunmez!");
-				}
-				else {
-					println("Paket    : " + pkg.getName() + "  (aktivasyon: " +
-						pkg.getActivationLevel() + ")");
+		// 2) Active plugins in current tool
+		if (activeTool != null) {
+			println("");
+			println("--- Plugins in active tool (" + activeTool.getManagedPlugins().size() + ") ---");
+			boolean loaded = false;
+			for (Plugin p : activeTool.getManagedPlugins()) {
+				if (p.getClass().getName().startsWith("deepseekai")) {
+					println("  [LOADED] " + p.getClass().getName());
+					loaded = true;
 				}
 			}
-			catch (Throwable t) {
-				println("HATA: getPluginPackage() istisna atti: " + t);
+			if (!loaded) {
+				println("  DeepSeekAIPlugin is NOT loaded in this tool.");
 			}
 		}
 
-		// 4) "Ghidra Core" paketi gercekten var mi?
+		// 3) ClassSearcher discovery
 		println("");
-		println("PluginPackage.exists(\"Ghidra Core\") = " + PluginPackage.exists("Ghidra Core"));
+		println("--- ClassSearcher Plugin.class Search ---");
+		List<Class<? extends Plugin>> classes = ClassSearcher.getClasses(Plugin.class);
+		println("Total Plugin classes found: " + classes.size());
+		boolean inClassSearcher = false;
+		for (Class<? extends Plugin> c : classes) {
+			if (c.getName().startsWith("deepseekai")) {
+				println("  -> FOUND: " + c.getName());
+				inClassSearcher = true;
+			}
+		}
+		if (!inClassSearcher) {
+			println("  NOT found in ClassSearcher! Jar might not be in an active extension.");
+		}
+
+		// 4) PluginPackage check
+		println("");
 		try {
 			PluginPackage core = PluginPackage.getPluginPackage("Ghidra Core");
-			println("getPluginPackage(\"Ghidra Core\") = " +
+			println("Ghidra Core package: " +
 				(core == null ? "NULL" : core.getName()));
 		}
 		catch (Throwable t) {
-			println("getPluginPackage(\"Ghidra Core\") istisna: " + t);
+			println("getPluginPackage("Ghidra Core") exception: " + t);
 		}
 
-		// 5) Configure diyalogunun kullandigi yapilandirma uzerinden ara
+		// 5) Search through configuration used by Configure dialog
 		println("");
 		try {
 			DefaultPluginsConfiguration config = new DefaultPluginsConfiguration();
 			List<PluginPackage> packages = config.getPluginPackages();
-			println("Yapilandirmadaki paket sayisi: " + packages.size());
+			println("Package count in configuration: " + packages.size());
 			boolean found = false;
 			for (PluginPackage p : packages) {
 				List<PluginDescription> list = config.getPluginDescriptions(p);
 				for (PluginDescription d : list) {
 					if (d.getPluginClass().getName().startsWith("deepseekai")) {
-						println("  -> LISTEDE: paket=" + p.getName() + " ad=" + d.getName());
+						println("  -> IN LIST: package=" + p.getName() + " name=" + d.getName());
 						found = true;
 					}
 				}
 				if ("Ghidra Core".equals(p.getName())) {
-					println("  Ghidra Core paketindeki plugin sayisi: " + list.size());
+					println("  Plugins in Ghidra Core package: " + list.size());
 				}
 			}
-			println(found ? "SONUC: Eklenti yapilandirma listesinde VAR."
-				: "SONUC: Eklenti yapilandirma listesinde YOK!");
+			println(found ? "RESULT: Plugin IS in configuration list."
+				: "RESULT: Plugin is NOT in configuration list!");
 		}
 		catch (Throwable t) {
-			println("yapilandirma kontrolu basarisiz: " + t);
+			println("Configuration check failed: " + t);
 		}
 
-		// 6) Arac yapilandirmasi (GhidraPluginsConfiguration - package-private)
+		// 6) Tool configuration (GhidraPluginsConfiguration - package-private)
 		println("");
 		try {
 			Class<?> cls =
@@ -122,7 +114,7 @@ public class CheckPluginRegistration extends GhidraScript {
 			@SuppressWarnings("unchecked")
 			List<PluginPackage> toolPackages =
 				(List<PluginPackage>) getPackages.invoke(toolConfig);
-			println("Arac yapilandirmasindaki paket sayisi: " + toolPackages.size());
+			println("Package count in tool configuration: " + toolPackages.size());
 			java.lang.reflect.Method getDescs =
 				cls.getMethod("getPluginDescriptions", PluginPackage.class);
 			boolean found2 = false;
@@ -132,16 +124,16 @@ public class CheckPluginRegistration extends GhidraScript {
 					(List<PluginDescription>) getDescs.invoke(toolConfig, p);
 				for (PluginDescription d : list) {
 					if (d.getPluginClass().getName().startsWith("deepseekai")) {
-						println("  -> ARAC LISTESINDE: paket=" + p.getName());
+						println("  -> IN TOOL LIST: package=" + p.getName());
 						found2 = true;
 					}
 				}
 			}
-			println(found2 ? "SONUC: Arac yapilandirmasinda VAR."
-				: "SONUC: Arac yapilandirmasinda YOK!");
+			println(found2 ? "RESULT: Present in tool configuration."
+				: "RESULT: NOT present in tool configuration!");
 		}
 		catch (Throwable t) {
-			println("arac yapilandirmasi kontrolu basarisiz: " + t);
+			println("Tool configuration check failed: " + t);
 		}
 	}
 }

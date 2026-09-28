@@ -28,24 +28,23 @@ import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 
 /**
- * Toplu (batch) AI analizinin cekirdegi. Arayuzden bagimsizdir; boylece
- * hem GUI gorevinden ({@link BatchAiTask}) hem de headless betiklerden
- * cagrilabilir ve test edilebilir.
+ * Core engine for batch AI analysis. Decoupled from the GUI so it can be
+ * invoked and tested from both the GUI task ({@link BatchAiTask}) and headless scripts.
  * <p>
- * Her fonksiyon icin:
+ * For each function:
  * <ol>
- * <li>decompile edilir,</li>
- * <li>onbellekte sonuc yoksa DeepSeek'e gonderilir,</li>
- * <li>oneriler programa uygulanir (isimlendirme + yorumlar),</li>
- * <li>istenmisse zenginlestirilmis C ciktisina eklenir.</li>
+ * <li>Decompiled via Ghidra,</li>
+ * <li>Sent to DeepSeek API if not present in cache,</li>
+ * <li>Suggestions applied to the program (renaming + comments),</li>
+ * <li>Optionally appended to the enriched C pseudocode output file.</li>
  * </ol>
  */
 public class BatchAiEngine {
 
-	/** Toplu analiz sonucunun ozeti. */
+	/** Summary of batch analysis execution. */
 	public static class Result {
 		public int total;
-		public int processed; // API'ye gonderilen
+		public int processed; // Sent to API
 		public int fromCache;
 		public int failed;
 		public int functionsRenamed;
@@ -63,20 +62,20 @@ public class BatchAiEngine {
 
 		public String summary() {
 			StringBuilder sb = new StringBuilder();
-			sb.append("Toplu analiz tamamlandi.\n\n");
-			sb.append("  Islenecek fonksiyon : ").append(total).append('\n');
-			sb.append("  API'ye gonderilen   : ").append(processed).append('\n');
-			sb.append("  Onbellekten gelen   : ").append(fromCache).append('\n');
-			sb.append("  Hata                : ").append(failed).append('\n');
-			sb.append("  Yeni fonksiyon adi  : ").append(functionsRenamed).append('\n');
-			sb.append("  Yeni degisken adi   : ").append(variablesRenamed).append('\n');
-			sb.append("  Eklenen yorum       : ").append(commentsAdded).append('\n');
-			sb.append("  Token               : ").append(promptTokens).append(" giris + ")
-					.append(completionTokens).append(" cikis = ").append(totalTokens())
+			sb.append("Batch analysis completed.\n\n");
+			sb.append("  Functions to process : ").append(total).append('\n');
+			sb.append("  Sent to API          : ").append(processed).append('\n');
+			sb.append("  Retrieved from cache : ").append(fromCache).append('\n');
+			sb.append("  Errors / failures    : ").append(failed).append('\n');
+			sb.append("  Functions renamed    : ").append(functionsRenamed).append('\n');
+			sb.append("  Variables renamed    : ").append(variablesRenamed).append('\n');
+			sb.append("  Comments added       : ").append(commentsAdded).append('\n');
+			sb.append("  Tokens consumed      : ").append(promptTokens).append(" prompt + ")
+					.append(completionTokens).append(" completion = ").append(totalTokens())
 					.append('\n');
-			sb.append("  Sure                : ").append(elapsedMillis / 1000).append(" saniye\n");
+			sb.append("  Elapsed time         : ").append(elapsedMillis / 1000).append(" seconds\n");
 			if (cFile != null) {
-				sb.append("\n  C ciktisi           : ").append(cFile.getAbsolutePath()).append('\n');
+				sb.append("\n  C output file        : ").append(cFile.getAbsolutePath()).append('\n');
 			}
 			OutcomeApplier.appendProblems(sb, problems);
 			return sb.toString();
@@ -104,10 +103,10 @@ public class BatchAiEngine {
 	}
 
 	/**
-	 * Verilen fonksiyonlari sirayla isler.
+	 * Sequentially processes the given list of functions.
 	 *
-	 * @param functions islenecek fonksiyon listesi (onceden filtrelenmis)
-	 * @param monitor ilerleme/iptal (null olabilir)
+	 * @param functions pre-filtered list of functions to process
+	 * @param monitor task progress/cancellation monitor (can be null)
 	 */
 	public Result run(List<Function> functions, TaskMonitor monitor) throws CancelledException {
 		Result result = new Result();
@@ -129,7 +128,7 @@ public class BatchAiEngine {
 			catch (IOException e) {
 				exportEnabled = false;
 				result.cFile = null;
-				result.problems.add("C cikti dosyasi olusturulamadi: " + e.getMessage());
+				result.problems.add("Could not create C output file: " + e.getMessage());
 			}
 
 			int index = 0;
@@ -173,7 +172,7 @@ public class BatchAiEngine {
 	}
 
 	// ------------------------------------------------------------------
-	// Tek fonksiyon isleme
+	// Single Function Processing
 	// ------------------------------------------------------------------
 
 	private void processFunction(DecompInterface decompiler, Function function, Result result,
@@ -243,7 +242,7 @@ public class BatchAiEngine {
 		}
 
 		if (wantExport) {
-			// Isimlendirme uygulandiysa guncel adlari gormek icin tekrar decompile et
+			// If names were applied, decompile again to obtain the updated C code
 			DecompiledContext exportContext = wantApply
 					? DecompilerHelper.buildWith(decompiler, program, function, monitor,
 						config.maxCodeChars)
@@ -254,34 +253,44 @@ public class BatchAiEngine {
 	}
 
 	// ------------------------------------------------------------------
-	// Onbellek
+	// Cache
 	// ------------------------------------------------------------------
 
 	private File resolveCacheFile() {
 		if (options.cacheFile != null) {
 			return options.cacheFile;
 		}
-		if (options.cOutputFile != null) {
-			return new File(options.cOutputFile.getAbsolutePath() + ".cache.json");
+		File cFile = options.cOutputFile;
+		if (cFile != null) {
+			File parent = cFile.getParentFile();
+			String name = cFile.getName();
+			if (name.endsWith(".c")) {
+				name = name.substring(0, name.length() - 2);
+			}
+			return new File(parent, name + ".cache.json");
 		}
-		String name = program.getName() + ".deepseek-cache.json";
-		return new File(System.getProperty("user.home", "."), name);
+		String home = System.getProperty("user.home", ".");
+		String safeProg = program.getName().replaceAll("[^A-Za-z0-9_.-]", "_");
+		return new File(home, safeProg + "_deepseek.cache.json");
 	}
 
 	private void loadCache() {
-		cache = new JsonObject();
-		cache.add("entries", new JsonObject());
 		if (!options.useCache) {
 			return;
 		}
 		cacheFile = resolveCacheFile();
-		if (cacheFile == null || !cacheFile.isFile()) {
+		if (!cacheFile.isFile()) {
+			cache = new JsonObject();
+			cache.add("entries", new JsonObject());
 			return;
 		}
-		try (Reader reader =
-			Files.newBufferedReader(cacheFile.toPath(), StandardCharsets.UTF_8)) {
+		try (Reader reader = Files.newBufferedReader(cacheFile.toPath(), StandardCharsets.UTF_8)) {
 			JsonObject loaded = JsonParser.parseReader(reader).getAsJsonObject();
-			if (loaded.has("entries") && loaded.get("entries").isJsonObject()) {
+			if (!loaded.has("entries") || !loaded.get("entries").isJsonObject()) {
+				cache = new JsonObject();
+				cache.add("entries", new JsonObject());
+			}
+			else {
 				cache = loaded;
 			}
 		}
@@ -304,7 +313,7 @@ public class BatchAiEngine {
 			return null;
 		}
 		JsonObject entry = all.getAsJsonObject(key);
-		// Farkli model ile uretilmis sonuclari karistirmayalim
+		// Avoid mixing cache entries generated with different models
 		String model = DeepSeekClient.jsonString(entry, "model");
 		if (!model.isEmpty() && !model.equals(config.model)) {
 			return null;
@@ -342,12 +351,12 @@ public class BatchAiEngine {
 			GSON.toJson(cache, writer);
 		}
 		catch (Exception e) {
-			// onbellek yazilamazsa analiz devam etsin
+			// Cache write failure is non-fatal; continue analysis
 		}
 	}
 
 	// ------------------------------------------------------------------
-	// C cikti dosyasi
+	// C Export Output
 	// ------------------------------------------------------------------
 
 	private void openExportFile(Result result) throws IOException {
@@ -367,30 +376,30 @@ public class BatchAiEngine {
 			return;
 		}
 		cWriter.write("/******************************************************************************\n");
-		cWriter.write(" * Ghidra + DeepSeek AI - decompile edilmis kaynak kodu\n");
+		cWriter.write(" * Ghidra + DeepSeek AI - Decompiled Source Code\n");
 		cWriter.write(" *\n");
 		cWriter.write(" * Program  : " + program.getName() + "\n");
-		cWriter.write(" * Dil      : " + program.getLanguageID() + "\n");
-		cWriter.write(" * Tarih    : " + new Date() + "\n");
+		cWriter.write(" * Language : " + program.getLanguageID() + "\n");
+		cWriter.write(" * Date     : " + new Date() + "\n");
 		cWriter.write(" * Model    : " + config.model + "\n");
-		cWriter.write(" * Araclar  : Ghidra " + ghidra.framework.Application.getApplicationVersion() +
-			" + DeepSeek AI eklentisi\n");
+		cWriter.write(" * Tool     : Ghidra " + ghidra.framework.Application.getApplicationVersion() +
+			" + DeepSeek AI extension\n");
 		cWriter.write(" *\n");
-		cWriter.write(" * NOT: Bu dosya otomatik uretilmistir. Orijinal kaynak kod degildir;\n");
-		cWriter.write(" *      decompiler ciktisi olup AI tarafindan isimlendirilmis ve\n");
-		cWriter.write(" *      yorumlanmistir. Derlenebilir oldugu garanti edilmez.\n");
+		cWriter.write(" * NOTE: This file is automatically generated. It is not original source code;\n");
+		cWriter.write(" *       it contains decompiler pseudocode renamed and annotated by AI.\n");
+		cWriter.write(" *       Compilation is not guaranteed.\n");
 		cWriter.write(" *\n");
-		cWriter.write(" * Fonksiyon indeksi dosyanin sonundadir.\n");
+		cWriter.write(" * Function index is located at the end of this file.\n");
 		cWriter.write(" ******************************************************************************/\n\n");
 	}
 
-	/** Fonksiyon indeksini (guncel adlarla) dosyanin sonuna yazar. */
+	/** Writes function index (with updated names) at the end of the file. */
 	private void writeExportIndex(List<Function> functions) throws IOException {
 		if (cWriter == null) {
 			return;
 		}
 		cWriter.write("\n/******************************************************************************\n");
-		cWriter.write(" * FONKSIYON INDEKSI (" + functions.size() + ")\n");
+		cWriter.write(" * FUNCTION INDEX (" + functions.size() + ")\n");
 		cWriter.write(" ******************************************************************************/\n");
 		for (Function function : functions) {
 			String address = "0x" + function.getEntryPoint().toString().replace(" ", "");
@@ -399,7 +408,7 @@ public class BatchAiEngine {
 		cWriter.write(" ******************************************************************************/\n");
 	}
 
-	/** C blok yorumu uretir; uzun metni 78 sutunda sarar ve yorum kapatma dizisini kacislar. */
+	/** Produces a formatted C block comment, wrapping text at 78 columns. */
 	private static String commentBlock(String label, String text) {
 		final String prefix = " *   ";
 		final int width = 78;
@@ -443,16 +452,16 @@ public class BatchAiEngine {
 		String address = "0x" + function.getEntryPoint().toString().replace(" ", "");
 		cWriter.write("/* " + repeat('-', 76) + " */\n");
 		cWriter.write("/* " + pad(address, 12) + " " + pad(function.getName(), 46) +
-			" boyut: " + function.getBody().getNumAddresses() + "\n");
+			" size: " + function.getBody().getNumAddresses() + " bytes\n");
 		cWriter.write("/* " + repeat('-', 76) + " */\n");
 		if (outcome != null && !outcome.summary.isBlank()) {
-			cWriter.write(commentBlock("OZET", outcome.summary));
+			cWriter.write(commentBlock("SUMMARY", outcome.summary));
 		}
 		if (!context.signature.isBlank() && !context.signature.equals(function.getName())) {
-			cWriter.write(commentBlock("IMZA", context.signature));
+			cWriter.write(commentBlock("SIGNATURE", context.signature));
 		}
 		if (outcome != null && !outcome.varRenames.isEmpty()) {
-			cWriter.write("/*\n * Degisken eslesmesi:\n");
+			cWriter.write("/*\n * Variable mapping:\n");
 			for (AnalysisOutcome.VarRename rename : outcome.varRenames) {
 				String type = rename.type.isBlank() ? "" : ("  (" + rename.type + ")");
 				cWriter.write(" *   " + pad(rename.oldName, 18) + " -> " + rename.newName + type +
@@ -461,10 +470,10 @@ public class BatchAiEngine {
 			cWriter.write(" */\n");
 		}
 		if (!context.calledFunctions.isEmpty()) {
-			cWriter.write(commentBlock("Cagrilanlar", String.join(", ", context.calledFunctions)));
+			cWriter.write(commentBlock("Called Functions", String.join(", ", context.calledFunctions)));
 		}
 		if (outcome != null && !outcome.uncertainties.isEmpty()) {
-			cWriter.write(commentBlock("AI BELIRSIZLIKLERI",
+			cWriter.write(commentBlock("AI UNCERTAINTIES",
 				String.join(" | ", outcome.uncertainties)));
 		}
 		cWriter.write("\n");
@@ -482,16 +491,16 @@ public class BatchAiEngine {
 		}
 		try {
 			if (exportedFunctions == 0) {
-				cWriter.write("/* Hicbir fonksiyon disa aktarilmadi (filtreler veya iptal). */\n");
+				cWriter.write("/* No functions were exported (filtered out or cancelled). */\n");
 			}
 			else {
 				writeExportIndex(functions);
 			}
-			cWriter.write("\n/* Dosya sonu - " + exportedFunctions + " fonksiyon */\n");
+			cWriter.write("\n/* End of file - " + exportedFunctions + " functions */\n");
 			cWriter.close();
 		}
 		catch (IOException e) {
-			// yoksay
+			// ignore
 		}
 		cWriter = null;
 	}

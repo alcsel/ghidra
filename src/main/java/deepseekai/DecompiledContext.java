@@ -13,11 +13,11 @@ import ghidra.program.model.listing.Function;
 import ghidra.program.model.pcode.HighFunction;
 
 /**
- * Bir fonksiyonun decompile edilmis hali ve modele gonderilecek ek bilgiler.
+ * Context container holding decompiled code, annotated lines, and symbol metadata.
  */
 public class DecompiledContext {
 
-	/** Decompiler ciktisinin tek bir satiri. */
+	/** Single line of decompiled C output with optional address mapping. */
 	public static class CodeLine {
 		public final String text;
 		public final Address address;
@@ -32,7 +32,7 @@ public class DecompiledContext {
 		}
 	}
 
-	/** Modelin isimlendirebilecegi bir sembol (parametre veya yerel degisken). */
+	/** Function symbol (parameter or local variable) available for AI renaming. */
 	public static class SymbolInfo {
 		public String name = "";
 		public String type = "?";
@@ -43,13 +43,13 @@ public class DecompiledContext {
 
 		public String describe() {
 			StringBuilder sb = new StringBuilder();
-			sb.append(parameter ? "parametre" : "yerel");
+			sb.append(parameter ? "param" : "local");
 			sb.append("  ").append(type).append(' ').append(name);
 			if (!"?".equals(storage) && !storage.isEmpty()) {
-				sb.append("   [konum: ").append(storage).append(']');
+				sb.append("   [storage: ").append(storage).append(']');
 			}
 			if (!pcAddress.isEmpty()) {
-				sb.append("   [adres: ").append(pcAddress).append(']');
+				sb.append("   [address: ").append(pcAddress).append(']');
 			}
 			return sb.toString();
 		}
@@ -59,12 +59,11 @@ public class DecompiledContext {
 	public String signature = "";
 	public String rawCode = "";
 	/**
-	 * Decompiler'in urettigi HighFunction. Degisken isimlendirme
-	 * ({@code HighFunctionDBUtil.updateDBVariable}) icin gereklidir.
-	 * Kisa omurludur; saklanmamalidir.
+	 * HighFunction produced by the decompiler. Required for variable renaming
+	 * ({@code HighFunctionDBUtil.updateDBVariable}). Transient; must not be cached long-term.
 	 */
 	public HighFunction highFunction;
-	/** Modelin gorecegi, satir baslarinda adres etiketi olan kod. */
+	/** Annotated C code shown to the model with [0x...] address tags at each line. */
 	public String annotatedCode = "";
 	public boolean codeTruncated;
 
@@ -72,10 +71,10 @@ public class DecompiledContext {
 	public final List<SymbolInfo> symbols = new ArrayList<>();
 	public final List<String> calledFunctions = new ArrayList<>();
 
-	/** Cagrilan fonksiyonlari tek satirda ozetler. */
+	/** Summarizes called functions on a single line. */
 	public String calledFunctionsText() {
 		if (calledFunctions.isEmpty()) {
-			return "(cagri yok)";
+			return "(no calls)";
 		}
 		return String.join(", ", calledFunctions);
 	}

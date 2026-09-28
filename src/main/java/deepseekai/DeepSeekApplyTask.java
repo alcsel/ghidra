@@ -17,11 +17,11 @@ import ghidra.util.task.Task;
 import ghidra.util.task.TaskMonitor;
 
 /**
- * Kullanicinin onayladigi degisiklikleri programa uygular.
+ * Applies user-approved modifications to the target program.
  * <p>
- * Degisken isimlendirme icin guncel bir {@link HighFunction} gerekir; bu yuzden
- * fonksiyon bir kez daha decompile edilir, ardindan
- * {@link OutcomeApplier} ile tek transaction icinde yazilir.
+ * Variable renaming requires an active {@link HighFunction}; the function
+ * is decompiled once more if needed, and changes are committed via {@link OutcomeApplier}
+ * in a single transaction.
  */
 public class DeepSeekApplyTask extends Task {
 
@@ -38,7 +38,7 @@ public class DeepSeekApplyTask extends Task {
 			AnalysisOutcome outcome, List<AnalysisOutcome.VarRename> renames,
 			List<AnalysisOutcome.LineComment> comments, boolean renameFunction,
 			boolean setFunctionComment) {
-		super("DeepSeek AI: degisiklikler uygulaniyor", false, true, false);
+		super("DeepSeek AI: Applying modifications", false, true, false);
 		this.plugin = plugin;
 		this.program = program;
 		this.function = function;
@@ -55,12 +55,12 @@ public class DeepSeekApplyTask extends Task {
 		try {
 			HighFunction highFunction = null;
 			if (!renames.isEmpty()) {
-				monitor.setMessage("Degisken bilgileri yenileniyor...");
+				monitor.setMessage("Refreshing variable symbols...");
 				highFunction = DecompilerHelper.decompileHighFunction(program, function, monitor);
 			}
-			monitor.setMessage("Degisiklikler uygulaniyor...");
+			monitor.setMessage("Applying modifications...");
 
-			// Yalnizca secilen onerileri uygula
+			// Apply only user-selected suggestions
 			AnalysisOutcome selected = subSet(outcome, renames, comments);
 
 			OutcomeApplier.ApplyCounts applied = OutcomeApplier.apply(program, function,
@@ -78,12 +78,12 @@ public class DeepSeekApplyTask extends Task {
 			throw e;
 		}
 		catch (Throwable t) {
-			counts.problems.add("Beklenmeyen hata: " + t);
+			counts.problems.add("Unexpected error: " + t);
 		}
 		SwingUtilities.invokeLater(() -> plugin.applyFinished(program, function, counts));
 	}
 
-	/** Kullanicinin sectigi onerileri iceren kopya bir sonuc uretir. */
+	/** Produces a subset copy of the outcome containing only selected items. */
 	private static AnalysisOutcome subSet(AnalysisOutcome source,
 			List<AnalysisOutcome.VarRename> renames,
 			List<AnalysisOutcome.LineComment> comments) {

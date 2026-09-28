@@ -1,16 +1,16 @@
 /* ###
  * DeepSeek AI - Ghidra Extension
  *
- * Kurulum dogrulama betigi.
+ * Installation verification diagnostic script.
  *
- * Ghidra'da: Window > Script Manager > CheckDeepSeekInstall > Run
- * Headless : analyzeHeadless ... -postScript CheckDeepSeekInstall.java
+ * In Ghidra : Window > Script Manager > CheckDeepSeekInstall > Run
+ * Headless  : analyzeHeadless ... -postScript CheckDeepSeekInstall.java
  *
- * Su kontrolleri yapar:
- *   1. deepseekai.DeepSeekAIPlugin sinifi ClassSearcher tarafindan bulunuyor mu?
- *   2. Gson ve java.net.http bagimliliklari cozulebiliyor mu?
- *   3. JSON ayristirma gercekten calisiyor mu?
- *   4. DeepSeekAI araç (.tool) sablonu Ghidra tarafindan goruluyor mu?
+ * Verifies:
+ *   1. deepseekai.DeepSeekAIPlugin class is discoverable via ClassSearcher.
+ *   2. Gson and java.net.http runtime dependencies are resolvable.
+ *   3. JSON parsing and outcome mapping works properly.
+ *   4. DeepSeekAI tool template (.tool) is visible to Ghidra.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  */
@@ -33,7 +33,7 @@ public class CheckDeepSeekInstall extends GhidraScript {
 	@Override
 	protected void run() throws Exception {
 		println("==========================================================");
-		println(" DeepSeek AI eklentisi - kurulum kontrolu");
+		println(" DeepSeek AI Extension - Installation Check");
 		println("==========================================================");
 
 		checkPluginClass();
@@ -43,69 +43,69 @@ public class CheckDeepSeekInstall extends GhidraScript {
 
 		println("");
 		if (problems == 0) {
-			println("SONUC: Tum kontroller basarili. Eklenti kullanima hazir.");
+			println("RESULT: All checks passed. Extension is ready to use.");
 		}
 		else {
-			println("SONUC: " + problems + " sorun bulundu (yukaridaki HATA satirlarina bakin).");
+			println("RESULT: " + problems + " issues found (see [ERROR] lines above).");
 		}
 	}
 
-	/** Ghidra eklenti sinifini ClassSearcher ile arar. */
+	/** Checks if Ghidra's ClassSearcher can discover the plugin class. */
 	private void checkPluginClass() {
 		boolean found = false;
 		try {
 			List<Class<? extends Plugin>> classes = ClassSearcher.getClasses(Plugin.class);
 			for (Class<? extends Plugin> c : classes) {
 				if (c.getName().startsWith("deepseekai.")) {
-					println("[OK]   Eklenti sinifi bulundu : " + c.getName());
+					println("[OK]   Plugin class found : " + c.getName());
 					found = true;
 				}
 			}
 		}
 		catch (Throwable t) {
-			fail("Eklenti siniflari listelenemedi: " + t);
+			fail("Could not list plugin classes: " + t);
 			return;
 		}
 		if (!found) {
-			fail("deepseekai.DeepSeekAIPlugin bulunamadi. " +
-				"Jar dosyasi Ghidra\\Extensions\\DeepSeekAI\\lib altinda mi?");
+			fail("deepseekai.DeepSeekAIPlugin not found. " +
+				"Is the jar file located inside Ghidra\\Extensions\\DeepSeekAI\\lib?");
 		}
 	}
 
-	/** Gson ve java.net.http erisilebilir mi? */
+	/** Checks if Gson and java.net.http are accessible. */
 	private void checkDependencies() {
 		try {
 			Class.forName("com.google.gson.JsonObject");
-			println("[OK]   Gson kutuphanesi erisilebilir");
+			println("[OK]   Gson library is accessible");
 		}
 		catch (Throwable t) {
-			fail("Gson bulunamadi: " + t);
+			fail("Gson not found: " + t);
 		}
 		try {
 			Class.forName("java.net.http.HttpClient");
-			println("[OK]   java.net.http.HttpClient erisilebilir");
+			println("[OK]   java.net.http.HttpClient is accessible");
 		}
 		catch (Throwable t) {
-			fail("java.net.http bulunamadi (Java 11+ gerekir): " + t);
+			fail("java.net.http not found (Java 11+ required): " + t);
 		}
 		try {
 			Class<?> configClass = Class.forName("deepseekai.DeepSeekConfig");
 			configClass.getDeclaredConstructor().newInstance();
-			println("[OK]   deepseekai.DeepSeekConfig orneklenebiliyor");
+			println("[OK]   deepseekai.DeepSeekConfig can be instantiated");
 		}
 		catch (Throwable t) {
-			fail("DeepSeekConfig yuklenemedi: " + t);
+			fail("Could not instantiate DeepSeekConfig: " + t);
 		}
 	}
 
-	/** AnalysisOutcome.parse gercekten calisiyor mu? */
+	/** Verifies that AnalysisOutcome.parse operates correctly. */
 	private void checkJsonParsing() {
-		String sample = "{\"summary\":\"ornek aciklama\",\"function_name\":\"do_something\"," +
-			"\"line_comments\":[{\"address\":\"0x401000\",\"comment\":\"ornek yorum\"," +
+		String sample = "{\"summary\":\"example explanation\",\"function_name\":\"do_something\"," +
+			"\"line_comments\":[{\"address\":\"0x401000\",\"comment\":\"example comment\"," +
 			"\"confidence\":0.9}]," +
 			"\"variable_renames\":[{\"old_name\":\"uVar1\",\"new_name\":\"counter\"," +
-			"\"reason\":\"sayac\",\"confidence\":0.75}]," +
-			"\"uncertainties\":[\"ornek belirsizlik\"]}";
+			"\"reason\":\"loop counter\",\"confidence\":0.75}]," +
+			"\"uncertainties\":[{\"point\":\"example uncertainty\"}]}";
 		try {
 			Class<?> outcomeClass = Class.forName("deepseekai.AnalysisOutcome");
 			Method parse = outcomeClass.getMethod("parse", String.class, Program.class);
@@ -124,35 +124,35 @@ public class CheckDeepSeekInstall extends GhidraScript {
 			boolean parsed = Boolean.TRUE.equals(parsedField.get(outcome));
 
 			if (!parsed) {
-				fail("JSON ayristirma basarisiz (parsedFromJson=false)");
+				fail("JSON parsing failed (parsedFromJson=false)");
 				return;
 			}
-			if (!"ornek aciklama".equals(summary)) {
-				fail("Ozet alani yanlis okundu: " + summary);
+			if (!"example explanation".equals(summary)) {
+				fail("Summary field was not parsed correctly: " + summary);
 				return;
 			}
 			if (!"do_something".equals(name)) {
-				fail("Fonksiyon adi alani yanlis okundu: " + name);
+				fail("Function name field was not parsed correctly: " + name);
 				return;
 			}
 			if (renames != 1 || comments != 1) {
-				fail("Liste uzunluklari beklenmedik: renames=" + renames + " comments=" +
+				fail("Unexpected collection size: renames=" + renames + " comments=" +
 					comments);
 				return;
 			}
-			println("[OK]   JSON ayristirma calisiyor (1 degisken, 1 yorum, onerilen ad: " +
+			println("[OK]   JSON parsing works (1 variable, 1 comment, suggested name: " +
 				name + ")");
 		}
 		catch (Throwable t) {
-			fail("JSON ayristirma testi hata verdi: " + t);
+			fail("JSON parsing test failed with exception: " + t);
 		}
 	}
 
-	/** DeepSeekAI araç sablonu Ghidra tarafindan goruluyor mu? */
+	/** Checks if DeepSeekAI tool template is recognized by Ghidra. */
 	private void checkToolTemplate() {
 		try {
 			Set<ToolTemplate> tools = ToolUtils.getDefaultApplicationTools();
-			println("[..]   Ghidra " + tools.size() + " varsayilan araç sablonu goruyor:");
+			println("[..]   Ghidra sees " + tools.size() + " default tool templates:");
 			boolean found = false;
 			for (ToolTemplate tool : tools) {
 				println("       - " + tool.getName());
@@ -161,21 +161,21 @@ public class CheckDeepSeekInstall extends GhidraScript {
 				}
 			}
 			if (found) {
-				println("[OK]   DeepSeekAI araç sablonu bulundu (jar icindeki defaultTools/)");
+				println("[OK]   DeepSeekAI tool template found (inside jar under defaultTools/)");
 			}
 			else {
-				println("[..]   DeepSeekAI araç sablonu varsayilanlar arasinda yok.");
-				println("       Araclar (Tool Chest) penceresinde yine de gorunur: " +
-					"ayrica ~/.ghidra/.ghidra_<surum>/tools/DeepSeekAI.tool dosyasi da kurulur.");
+				println("[..]   DeepSeekAI tool template is not in default tools list.");
+				println("       It will still appear in Tool Chest; " +
+					"also ~/.ghidra/.ghidra_<version>/tools/DeepSeekAI.tool is installed.");
 			}
 		}
 		catch (Throwable t) {
-			println("[..]   Araç sablonlari okunamadi: " + t.getMessage());
+			println("[..]   Could not read tool templates: " + t.getMessage());
 		}
 	}
 
 	private void fail(String message) {
 		problems++;
-		println("[HATA] " + message);
+		println("[ERROR] " + message);
 	}
 }

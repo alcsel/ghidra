@@ -1,17 +1,16 @@
 /* ###
  * DeepSeek AI - Ghidra Extension
  *
- * DeepSeek API baglantisini test eden betik.
+ * Connectivity test script for DeepSeek API.
  *
- * Ghidra'da : Window > Script Manager > TestDeepSeekApi > Run
+ * In Ghidra : Window > Script Manager > TestDeepSeekApi > Run
  * Headless  : analyzeHeadless ... -postScript TestDeepSeekApi.java
- *             (anahtari arguman olarak da verebilirsiniz: ... TestDeepSeekApi.java sk-xxx)
+ *             (API key can be passed as argument: ... TestDeepSeekApi.java sk-xxx)
  *
- * Anahtar su sirayla aranir:
- *   1. Betik argumani (scriptArgs[0])
- *   2. DEEPSEEK_API_KEY ortam degiskeni
- *
- * Not: Bu betik gercek bir API istegi gonderir (cok kucuk: ~30 token).
+ * Key lookup order:
+ *   1. Script argument (scriptArgs[0])
+ *   2. DEEPSEEK_API_KEY environment variable
+ *   3. Local properties file (~/.deepseek_ghidra.properties)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  */
@@ -29,21 +28,20 @@ public class TestDeepSeekApi extends GhidraScript {
 		String keySource;
 		if (args != null && args.length > 0 && args[0] != null && !args[0].trim().isEmpty()) {
 			config.apiKey = args[0].trim();
-			keySource = "betik argumani";
+			keySource = "script argument";
 		}
 		else {
-			// DEEPSEEK_API_KEY ortam degiskeni -> ~/.deepseek_ghidra.properties
 			config.loadApiKeyOnly();
 			keySource = config.apiKeySource();
 		}
 
 		if (!config.hasApiKey()) {
-			println("API anahtari bulunamadi. Sirayla denendi:");
-			println("  1) betik argumani");
-			println("  2) DEEPSEEK_API_KEY ortam degiskeni");
+			println("API key not found. Tried in order:");
+			println("  1) Script argument");
+			println("  2) DEEPSEEK_API_KEY environment variable");
 			println("  3) " + DeepSeekConfig.getKeyFile().getAbsolutePath() + "  (apiKey=sk-...)");
 			println("");
-			println("Ornek: TestDeepSeekApi.java sk-xxxxxxxx");
+			println("Example usage: TestDeepSeekApi.java sk-xxxxxxxx");
 			return;
 		}
 
@@ -51,30 +49,30 @@ public class TestDeepSeekApi extends GhidraScript {
 		config.maxTokens = 32;
 		config.timeoutSeconds = 60;
 
-		println("=== DeepSeek API baglanti testi ===");
-		println("Uç nokta (endpoint) : " + DeepSeekClient.chatCompletionsUrl(config.baseUrl));
-		println("Model               : " + config.model);
-		println("Anahtar kaynagi     : " + keySource + " (" + mask(config.apiKey) + ")");
+		println("=== DeepSeek API Connectivity Test ===");
+		println("Endpoint     : " + DeepSeekClient.chatCompletionsUrl(config.baseUrl));
+		println("Model        : " + config.model);
+		println("Key source   : " + keySource + " (" + mask(config.apiKey) + ")");
 		println("");
 
 		try {
 			DeepSeekClient.ChatResponse response =
-				new DeepSeekClient().chat("Kisa cevap ver.", "Sadece 'ok' yaz.", config, null);
-			println("SONUC    : BASARILI");
-			println("Yanit    : " + response.content.trim());
+				new DeepSeekClient().chat("Give a short answer.", "Reply with only 'ok'.", config, null);
+			println("RESULT : SUCCESS");
+			println("Reply  : " + response.content.trim());
 			if (!response.usageText().isEmpty()) {
-				println("Kullanim : " + response.usageText());
+				println("Usage  : " + response.usageText());
 			}
 		}
 		catch (Throwable t) {
-			println("SONUC    : BASARISIZ");
-			println("Hata     : " + t);
+			println("RESULT : FAILED");
+			println("Error  : " + t);
 		}
 	}
 
 	private String mask(String key) {
 		if (key == null || key.length() < 8) {
-			return "(tanimsiz)";
+			return "(undefined)";
 		}
 		return key.substring(0, 6) + "..." + key.substring(key.length() - 4);
 	}

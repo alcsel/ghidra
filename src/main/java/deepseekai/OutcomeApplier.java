@@ -20,15 +20,15 @@ import ghidra.program.model.pcode.HighSymbol;
 import ghidra.program.model.symbol.SourceType;
 
 /**
- * Model onerilerini programa uygular. Hem tek fonksiyon analizinde
- * ({@link DeepSeekApplyTask}) hem toplu analizde ({@link BatchAiEngine})
- * ayni mantik kullanilsin diye tek yerde toplanmistir.
+ * Applies model suggestions to the target Ghidra program.
  * <p>
- * Tum degisiklikler tek bir transaction icinde yapilir.
+ * Centralized logic shared by both single function analysis ({@link DeepSeekApplyTask})
+ * and batch analysis ({@link BatchAiEngine}). All modifications are executed
+ * inside a single atomic undoable transaction.
  */
 public class OutcomeApplier {
 
-	/** Uygulanan degisikliklerin sayilari. */
+	/** Counts and statistics of applied modifications. */
 	public static class ApplyCounts {
 		public int variablesRenamed;
 		public int variablesSkipped;
@@ -38,60 +38,59 @@ public class OutcomeApplier {
 		public boolean functionCommentSet;
 		public final List<String> problems = new ArrayList<>();
 
-		/** Insan tarafindan okunabilir ozet. */
+		/** Human-readable summary of applied changes. */
 		public String summary() {
 			StringBuilder sb = new StringBuilder();
-			sb.append("Uygulanan degisiklikler:\n");
-			sb.append("  - Yeniden adlandirilan degisken: ").append(variablesRenamed);
+			sb.append("Applied modifications:\n");
+			sb.append("  - Variables renamed : ").append(variablesRenamed);
 			if (variablesSkipped > 0) {
-				sb.append(" (").append(variablesSkipped).append(" atlandi)");
+				sb.append(" (").append(variablesSkipped).append(" skipped)");
 			}
 			sb.append('\n');
-			sb.append("  - Eklenen yorum: ").append(commentsAdded);
+			sb.append("  - Comments added    : ").append(commentsAdded);
 			if (commentsSkipped > 0) {
-				sb.append(" (").append(commentsSkipped).append(" atlandi)");
+				sb.append(" (").append(commentsSkipped).append(" skipped)");
 			}
 			sb.append('\n');
 			if (functionRenamed) {
-				sb.append("  - Fonksiyon adi guncellendi\n");
+				sb.append("  - Function name updated\n");
 			}
 			if (functionCommentSet) {
-				sb.append("  - Fonksiyon yorumu guncellendi\n");
+				sb.append("  - Function comment updated\n");
 			}
 			appendProblems(sb, problems);
 			return sb.toString();
 		}
 	}
 
-	/** Sorun listesini ozete ekler. */
+	/** Appends problems and warnings to the summary. */
 	public static void appendProblems(StringBuilder sb, List<String> problems) {
 		if (problems.isEmpty()) {
 			return;
 		}
-		sb.append("\nUyarilar (").append(problems.size()).append("):\n");
+		sb.append("\nWarnings (").append(problems.size()).append("):\n");
 		int limit = Math.min(problems.size(), 12);
 		for (int i = 0; i < limit; i++) {
 			sb.append("  ! ").append(problems.get(i)).append('\n');
 		}
 		if (problems.size() > limit) {
-			sb.append("  ! ... ").append(problems.size() - limit).append(" uyari daha\n");
+			sb.append("  ! ... ").append(problems.size() - limit).append(" more warnings\n");
 		}
 	}
 
 	private OutcomeApplier() {
-		// yardimci sinif
+		// utility class
 	}
 
 	/**
-	 * Onerileri programa uygular.
+	 * Applies suggestions to the program.
 	 *
-	 * @param highFunction ayni decompile sonucundan alinan HighFunction (zorunlu,
-	 *            degisken isimlendirme icin)
-	 * @param renameVariables yerel degisken/parametre isimleri degistirilsin mi
-	 * @param renameFunction fonksiyon adi degistirilsin mi
-	 * @param addComments satir yorumlari eklensin mi
-	 * @param setFunctionComment fonksiyon giris yorumu yazilsin mi
-	 * @return uygulama sayilari
+	 * @param highFunction fresh HighFunction from decompilation (required for variable renaming)
+	 * @param renameVariables whether to rename variables / parameters
+	 * @param renameFunction whether to rename the function
+	 * @param addComments whether to add line comments
+	 * @param setFunctionComment whether to set the function entry comment
+	 * @return counts of applied modifications
 	 */
 	public static ApplyCounts apply(Program program, Function function, HighFunction highFunction,
 			AnalysisOutcome outcome, boolean renameVariables, boolean renameFunction,
@@ -99,7 +98,7 @@ public class OutcomeApplier {
 
 		ApplyCounts counts = new ApplyCounts();
 		int transaction =
-			program.startTransaction("DeepSeek AI: " + function.getName() + " analizini uygula");
+			program.startTransaction("DeepSeek AI: Apply analysis to " + function.getName());
 		boolean success = false;
 		try {
 			if (renameVariables && highFunction != null && !outcome.varRenames.isEmpty()) {
@@ -139,7 +138,7 @@ public class OutcomeApplier {
 				}
 			}
 			catch (Throwable t) {
-				// yoksay
+				// ignore
 			}
 		}
 		if (hasParameterRename) {
@@ -147,7 +146,7 @@ public class OutcomeApplier {
 				function.setSignatureSource(SourceType.USER_DEFINED);
 			}
 			catch (Throwable t) {
-				counts.problems.add("Imza kaynagi degistirilemedi: " + t.getMessage());
+				counts.problems.add("Could not update signature source: " + t.getMessage());
 			}
 		}
 
@@ -155,7 +154,7 @@ public class OutcomeApplier {
 			HighSymbol symbol = symbols.get(rename.oldName);
 			if (symbol == null) {
 				counts.variablesSkipped++;
-				counts.problems.add("Degisken bulunamadi: " + rename.oldName);
+				counts.problems.add("Variable not found: " + rename.oldName);
 				continue;
 			}
 			try {
@@ -166,7 +165,7 @@ public class OutcomeApplier {
 			}
 			catch (Throwable t) {
 				counts.variablesSkipped++;
-				counts.problems.add("Yeniden adlandirilamadi: " + rename.oldName + " -> " +
+				counts.problems.add("Could not rename variable: " + rename.oldName + " -> " +
 					rename.newName + " (" + t.getMessage() + ")");
 			}
 		}
@@ -192,7 +191,7 @@ public class OutcomeApplier {
 			}
 			catch (Throwable t) {
 				counts.commentsSkipped++;
-				counts.problems.add("Yorum yazilamadi (" + comment.rawAddress + "): " +
+				counts.problems.add("Could not add comment (" + comment.rawAddress + "): " +
 					t.getMessage());
 			}
 		}
@@ -213,7 +212,7 @@ public class OutcomeApplier {
 			counts.functionCommentSet = true;
 		}
 		catch (Throwable t) {
-			counts.problems.add("Fonksiyon yorumu yazilamadi: " + t.getMessage());
+			counts.problems.add("Could not set function comment: " + t.getMessage());
 		}
 	}
 
@@ -228,11 +227,11 @@ public class OutcomeApplier {
 			counts.functionRenamed = true;
 		}
 		catch (Throwable t) {
-			counts.problems.add("Fonksiyon adi degistirilemedi: " + t.getMessage());
+			counts.problems.add("Could not rename function: " + t.getMessage());
 		}
 	}
 
-	/** Modelin onerdigi tipi Ghidra veri tipine cevirir; olmazsa mevcut tipi korur. */
+	/** Resolves model suggested type to a Ghidra DataType, preserving current type as fallback. */
 	public static DataType resolveType(Program program, String typeName, HighSymbol symbol) {
 		DataType current = symbol.getDataType();
 		if (DeepSeekConfig.isBlank(typeName)) {
@@ -255,7 +254,7 @@ public class OutcomeApplier {
 				}
 			}
 			catch (Throwable t) {
-				// yoksay, mevcut tipi kullan
+				// ignore, preserve current type
 			}
 		}
 		return current;

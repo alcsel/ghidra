@@ -1,16 +1,16 @@
 /* ###
  * DeepSeek AI - Ghidra Extension
  *
- * Ghidra'nin standart eklenti derleme betigi ile derler.
+ * Builds the extension using Ghidra's standard extension build script.
  *
- * Kullanim (internet gerekir; Gradle dagitimi indirilir):
+ * Usage (requires internet to download Gradle distribution):
  *
- *   set GHIDRA_INSTALL_DIR=C:\yol\ghidra_12.1.2_PUBLIC
+ *   set GHIDRA_INSTALL_DIR=C:\path\to\ghidra_12.1.2_PUBLIC
  *   gradlew.bat -PGHIDRA_INSTALL_DIR=%GHIDRA_INSTALL_DIR% buildExtension
  *
- * Cikti: dist/ghidra_<surum>_<tarih>_DeepSeekAI.zip
+ * Output: dist/ghidra_<version>_<date>_DeepSeekAI.zip
  *
- * Not: Internet olmadan derlemek icin build.ps1 betigini kullanin.
+ * Note: To build offline without Gradle download, use the build.ps1 script.
  */
 
 //----------------------START "DO NOT MODIFY" SECTION------------------------------
@@ -26,7 +26,7 @@ else {
 	ghidraInstallDir = "<REPLACE>"
 }
 
-println "Ghidra kurulum dizini: ${ghidraInstallDir}"
+println "Ghidra installation directory: ${ghidraInstallDir}"
 
 apply from: new File(ghidraInstallDir).getCanonicalPath() + "/support/buildExtension.gradle"
 //----------------------END "DO NOT MODIFY" SECTION-------------------------------
@@ -36,12 +36,11 @@ repositories {
 }
 
 dependencies {
-	// Tum bagimliliklar Ghidra ile birlikte gelir (gson, java.net.http).
-	// Harici bir kutuphane gerekirse buraya eklenebilir.
+	// All runtime dependencies are provided by Ghidra (Gson, java.net.http).
+	// Any additional external libraries can be declared here.
 }
 
-// Dagitim arsivine girmemesi gereken gelistirici dosyalari
-// (gradlew/gradle/src/dist/build zaten Ghidra tarafindan varsayilan olarak haric tutulur)
+// Development and repository files to exclude from the release distribution archive
 buildExtension.exclude '.github/**'
 buildExtension.exclude '.gitignore'
 buildExtension.exclude '.gitattributes'
@@ -52,8 +51,8 @@ buildExtension.exclude 'gradlew'
 buildExtension.exclude 'gradlew.bat'
 buildExtension.exclude 'gradle/**'
 
-// Arac (.tool) sablonunu zip kokune de koy ki build.ps1 ile ayni paket olussun.
-// (Sablon zaten jar icinde defaultTools/ altinda bulunur.)
+// Include the tool (.tool) template at the root of the extension zip as well,
+// matching the package layout produced by build.ps1.
 buildExtension {
 	from('src/main/resources/defaultTools/DeepSeekAI.tool') {
 		into project.name

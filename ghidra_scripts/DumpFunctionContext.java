@@ -1,15 +1,14 @@
 /* ###
  * DeepSeek AI - Ghidra Extension
  *
- * Teshis betigi: modele gonderilen baglamin (context) dogru olusturulup
- * olusturulmadigini gosterir; API cagrisi YAPMAZ.
+ * Diagnostic script: inspects whether context for the model is generated
+ * correctly; does NOT make an API call by default.
  *
- * Ghidra'da : Window > Script Manager > DumpFunctionContext > Run
+ * In Ghidra : Window > Script Manager > DumpFunctionContext > Run
  * Headless  : analyzeHeadless <proj> <name> -process <prog> -postScript DumpFunctionContext.java
  *
- * Opsiyonel arguman:
- *   api  -> Gercek bir DeepSeek istegi gonderir ve yaniti cozumler
- *           (kucuk bir ucret/token harcar).
+ * Optional arguments:
+ *   api  -> Sends an actual DeepSeek request and parses the response.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  */
@@ -32,21 +31,21 @@ public class DumpFunctionContext extends GhidraScript {
 	protected void run() throws Exception {
 		Program program = getCurrentProgram();
 		if (program == null) {
-			println("Acik bir program yok.");
+			println("Please open a program first.");
 			return;
 		}
 		Function function = pickFunction(program);
 		if (function == null) {
-			println("Analiz edilecek fonksiyon bulunamadi. Once otomatik analizi calistirin.");
+			println("No function found to analyze. Please run auto-analysis first.");
 			return;
 		}
 
 		DeepSeekConfig config = new DeepSeekConfig();
 		config.maxCodeChars = 24000;
 
-		println("=== DeepSeek AI baglam dokumu ===");
+		println("=== DeepSeek AI Function Context Dump ===");
 		println("Program   : " + program.getName());
-		println("Fonksiyon : " + function.getName() + " @ " +
+		println("Function  : " + function.getName() + " @ " +
 			function.getEntryPoint().toString());
 		println("");
 
@@ -59,26 +58,26 @@ public class DumpFunctionContext extends GhidraScript {
 				withAddress++;
 			}
 		}
-		println("Satir sayisi           : " + context.lines.size());
-		println("Adresi cozulen satir   : " + withAddress);
-		println("Sembol sayisi          : " + context.symbols.size());
-		println("Cagrilan fonksiyonlar  : " + context.calledFunctionsText());
-		println("Kod kisaltildi mi      : " + context.codeTruncated);
+		println("Line count             : " + context.lines.size());
+		println("Lines with address     : " + withAddress);
+		println("Symbol count           : " + context.symbols.size());
+		println("Called functions       : " + context.calledFunctionsText());
+		println("Code truncated         : " + context.codeTruncated);
 
 		if (withAddress == 0) {
-			println("UYARI: Hicbir satira adres eslenmedi! Satir-yorum uygulamasi calismaz.");
+			println("WARNING: No address mapped to lines! Line comments will not be applicable.");
 		}
 
 		println("");
-		println("--- MODELE GONDERILEN KOD (ilk 40 satir) ---");
-		String[] lines = context.annotatedCode.split("\n");
+		println("--- CODE SENT TO MODEL (first 40 lines) ---");
+		String[] lines = context.annotatedCode.split("\\n");
 		for (int i = 0; i < Math.min(40, lines.length); i++) {
 			println(lines[i]);
 		}
-		println("--- (toplam " + lines.length + " satir) ---");
+		println("--- (total " + lines.length + " lines) ---");
 
 		println("");
-		println("--- SEMBOL TABLOSU (ilk 20) ---");
+		println("--- SYMBOL TABLE (first 20) ---");
 		int count = 0;
 		for (DecompiledContext.SymbolInfo symbol : context.symbols) {
 			if (count++ >= 20) {
@@ -90,48 +89,48 @@ public class DumpFunctionContext extends GhidraScript {
 		String systemPrompt = Prompt.systemPrompt(config);
 		String userPrompt = Prompt.userPrompt(context, config);
 		println("");
-		println("Sistem istemi  : " + systemPrompt.length() + " karakter");
-		println("Kullanici istemi: " + userPrompt.length() + " karakter");
+		println("System prompt length : " + systemPrompt.length() + " characters");
+		println("User prompt length   : " + userPrompt.length() + " characters");
 
 		if (!wantsApiCall()) {
 			println("");
-			println("(API cagrisi atlandi. Denemek icin script argumani olarak 'api' verin.)");
+			println("(API call skipped. Pass 'api' as script argument to test real request.)");
 			return;
 		}
 
 		println("");
-		println("--- GERCEK API CAGRISI ---");
+		println("--- REAL API CALL ---");
 		config.maxTokens = 2048;
 		try {
 			DeepSeekClient.ChatResponse response =
 				new DeepSeekClient().chat(systemPrompt, userPrompt, config, monitor);
-			println("Kullanim: " + response.usageText());
+			println("Usage: " + response.usageText());
 			AnalysisOutcome outcome =
 				AnalysisOutcome.parse(response.content, program);
-			println("JSON cozumlendi        : " + outcome.parsedFromJson);
-			println("Ozet uzunlugu          : " + outcome.summary.length());
-			println("Onerilen fonksiyon adi : " +
-				(outcome.functionName.isEmpty() ? "(yok)" : outcome.functionName));
-			println("Yorum onerisi          : " + outcome.lineComments.size());
-			println("Degisken onerisi       : " + outcome.varRenames.size());
+			println("JSON parsed             : " + outcome.parsedFromJson);
+			println("Summary length          : " + outcome.summary.length());
+			println("Suggested function name : " +
+				(outcome.functionName.isEmpty() ? "(none)" : outcome.functionName));
+			println("Comment suggestions     : " + outcome.lineComments.size());
+			println("Variable suggestions    : " + outcome.varRenames.size());
 			println("");
-			println("--- OZET ---");
+			println("--- SUMMARY ---");
 			println(outcome.summary);
 			println("");
-			println("--- DEGISKEN ONERILERI ---");
+			println("--- VARIABLE SUGGESTIONS ---");
 			for (AnalysisOutcome.VarRename rename : outcome.varRenames) {
 				println("  " + rename.oldName + " -> " + rename.newName + "  (" + rename.type +
-					", guven " + rename.confidence + ") " + rename.reason);
+					", confidence " + rename.confidence + ") " + rename.reason);
 			}
 			println("");
-			println("--- YORUM ONERILERI ---");
+			println("--- COMMENT SUGGESTIONS ---");
 			for (AnalysisOutcome.LineComment comment : outcome.lineComments) {
-				println("  " + comment.rawAddress + " : " + comment.comment + "  (cozumlenen: " +
+				println("  " + comment.rawAddress + " : " + comment.comment + "  (resolved: " +
 					(comment.address != null) + ")");
 			}
 		}
 		catch (Throwable t) {
-			println("API cagrisi basarisiz: " + t);
+			println("API call failed: " + t);
 		}
 	}
 
@@ -156,7 +155,6 @@ public class DumpFunctionContext extends GhidraScript {
 				if (fallback == null) {
 					fallback = candidate;
 				}
-				// Biraz icerikli bir fonksiyon tercih edilir
 				if (candidate.getBody().getNumAddresses() > 40) {
 					return candidate;
 				}

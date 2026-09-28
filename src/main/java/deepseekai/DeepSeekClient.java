@@ -22,14 +22,14 @@ import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 
 /**
- * DeepSeek Chat Completions API icin kucuk bir istemci.
+ * Lightweight client for the DeepSeek Chat Completions API.
  * <p>
- * Harici bir kutuphane gerektirmez; Ghidra ile birlikte gelen
- * {@code java.net.http.HttpClient} ve {@code Gson} kullanilir.
+ * Uses Ghidra's built-in {@code java.net.http.HttpClient} and {@code Gson},
+ * requiring no additional external libraries.
  */
 public class DeepSeekClient {
 
-	/** API'den donen yanit. */
+	/** Parsed response returned by the API. */
 	public static class ChatResponse {
 		public String content = "";
 		public String reasoningContent = "";
@@ -42,7 +42,7 @@ public class DeepSeekClient {
 			if (totalTokens <= 0) {
 				return "";
 			}
-			return "token: " + promptTokens + " giris + " + completionTokens + " cikis = " +
+			return "tokens: " + promptTokens + " prompt + " + completionTokens + " completion = " +
 				totalTokens;
 		}
 	}
@@ -57,19 +57,19 @@ public class DeepSeekClient {
 	}
 
 	/**
-	 * Sohbet tamamlama istegi gonderir.
+	 * Sends a chat completion request to the DeepSeek API.
 	 *
-	 * @param systemPrompt modelin rolu ve kurallari
-	 * @param userPrompt gonderilecek asil icerik
-	 * @param config ayarlar
-	 * @param monitor iptal kontrolu icin (null olabilir)
+	 * @param systemPrompt system instructions and schema requirements
+	 * @param userPrompt user prompt with decompiled code context
+	 * @param config active configuration
+	 * @param monitor cancellation monitor (can be null)
 	 */
 	public ChatResponse chat(String systemPrompt, String userPrompt, DeepSeekConfig config,
 			TaskMonitor monitor) throws IOException, CancelledException {
 
 		if (DeepSeekConfig.isBlank(config.apiKey)) {
-			throw new IOException("API anahtari tanimli degil. " +
-				"Tools > DeepSeek AI > Ayarlar menusunden girin.");
+			throw new IOException("API key is not configured. " +
+				"Configure it via Tools > DeepSeek AI > Settings.");
 		}
 
 		JsonObject payload = new JsonObject();
@@ -98,43 +98,36 @@ public class DeepSeekClient {
 
 		HttpResponse<String> response;
 		try {
-			response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+			response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
 		}
 		catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
-			throw new IOException("Istek kesintiye ugradi: " + e.getMessage(), e);
+			throw new CancelledException("Request cancelled.");
+		}
+		catch (java.net.http.HttpTimeoutException e) {
+			throw new IOException("API request timed out (" + config.timeoutSeconds + " seconds).", e);
+		}
+		catch (Exception e) {
+			throw new IOException("API request failed: " + e.getMessage(), e);
 		}
 
 		checkCancelled(monitor);
 
-		String responseBody = response.body() == null ? "" : response.body();
 		int status = response.statusCode();
-		if (status != 200) {
-			throw new IOException("DeepSeek API hatasi (HTTP " + status + "): " +
-				extractErrorMessage(responseBody));
+		String responseBody = response.body();
+
+		if (status < 200 || status >= 300) {
+			String message = extractErrorMessage(responseBody);
+			throw new IOException("HTTP " + status + " (" + message + ")");
 		}
 
 		return parseResponse(responseBody);
 	}
 
-	private static JsonObject message(String role, String content) {
-		JsonObject m = new JsonObject();
-		m.addProperty("role", role);
-		m.addProperty("content", content);
-		return m;
-	}
-
-	private static void checkCancelled(TaskMonitor monitor) throws CancelledException {
-		if (monitor != null) {
-			monitor.checkCanceled();
-		}
-	}
-
-	/** Kullanicinin girdigi adresi tam endpoint'e cevirir. */
 	public static String chatCompletionsUrl(String baseUrl) {
 		String base = DeepSeekConfig.isBlank(baseUrl) ? DeepSeekConfig.DEFAULT_BASE_URL
 				: baseUrl.trim();
-		while (base.endsWith("/")) {
+		if (base.endsWith("/")) {
 			base = base.substring(0, base.length() - 1);
 		}
 		if (base.endsWith("/chat/completions")) {
@@ -146,114 +139,126 @@ public class DeepSeekClient {
 		return base + "/chat/completions";
 	}
 
-	private static ChatResponse parseResponse(String responseBody) throws IOException {
-		JsonObject root;
-		try {
-			root = JsonParser.parseString(responseBody).getAsJsonObject();
-		}
-		catch (Exception e) {
-			throw new IOException("API yaniti okunamadi (gecersiz JSON): " + abbreviate(
-				responseBody, 400), e);
-		}
-
-		if (root.has("error") && !root.get("error").isJsonNull()) {
-			throw new IOException("DeepSeek API hatasi: " + errorMessageFrom(root.get("error")));
-		}
-
-		ChatResponse result = new ChatResponse();
-		JsonArray choices = root.getAsJsonArray("choices");
-		if (choices == null || choices.size() == 0) {
-			throw new IOException("API yanitinda 'choices' alani yok: " + abbreviate(
-				responseBody, 400));
-		}
-
-		JsonObject choice = choices.get(0).getAsJsonObject();
-		if (choice.has("finish_reason") && !choice.get("finish_reason").isJsonNull()) {
-			result.finishReason = choice.get("finish_reason").getAsString();
-		}
-		JsonObject message = choice.getAsJsonObject("message");
-		if (message != null) {
-			result.content = jsonString(message, "content");
-			result.reasoningContent = jsonString(message, "reasoning_content");
-		}
-
-		JsonObject usage = root.getAsJsonObject("usage");
-		if (usage != null) {
-			result.promptTokens = jsonInt(usage, "prompt_tokens");
-			result.completionTokens = jsonInt(usage, "completion_tokens");
-			result.totalTokens = jsonInt(usage, "total_tokens");
-		}
-
-		if (result.content.isEmpty() && !result.reasoningContent.isEmpty()) {
-			result.content = result.reasoningContent;
-		}
-		return result;
+	private static JsonObject message(String role, String content) {
+		JsonObject m = new JsonObject();
+		m.addProperty("role", role);
+		m.addProperty("content", content);
+		return m;
 	}
 
-	private static String extractErrorMessage(String responseBody) {
+	private static void checkCancelled(TaskMonitor monitor) throws CancelledException {
+		if (monitor != null && monitor.isCancelled()) {
+			throw new CancelledException();
+		}
+	}
+
+	private static ChatResponse parseResponse(String json) throws IOException {
 		try {
-			JsonObject root = JsonParser.parseString(responseBody).getAsJsonObject();
+			JsonObject root = JsonParser.parseString(json).getAsJsonObject();
+			ChatResponse res = new ChatResponse();
+
+			if (!root.has("choices") || !root.get("choices").isJsonArray()) {
+				throw new IOException("Invalid API response (missing 'choices' array).");
+			}
+			JsonArray choices = root.getAsJsonArray("choices");
+			if (choices.isEmpty()) {
+				throw new IOException("Invalid API response (empty 'choices' array).");
+			}
+			JsonObject firstChoice = choices.get(0).getAsJsonObject();
+			if (firstChoice.has("finish_reason") && !firstChoice.get("finish_reason").isJsonNull()) {
+				res.finishReason = firstChoice.get("finish_reason").getAsString();
+			}
+			if (firstChoice.has("message") && firstChoice.get("message").isJsonObject()) {
+				JsonObject msg = firstChoice.getAsJsonObject("message");
+				res.content = jsonString(msg, "content");
+				res.reasoningContent = jsonString(msg, "reasoning_content");
+			}
+
+			if (root.has("usage") && root.get("usage").isJsonObject()) {
+				JsonObject usage = root.getAsJsonObject("usage");
+				res.promptTokens = jsonInt(usage, "prompt_tokens");
+				res.completionTokens = jsonInt(usage, "completion_tokens");
+				res.totalTokens = jsonInt(usage, "total_tokens");
+			}
+
+			return res;
+		}
+		catch (IOException e) {
+			throw e;
+		}
+		catch (Exception e) {
+			throw new IOException("Could not parse API response: " + e.getMessage(), e);
+		}
+	}
+
+	private static String extractErrorMessage(String body) {
+		if (body == null || body.isBlank()) {
+			return "Empty error response";
+		}
+		try {
+			JsonObject root = JsonParser.parseString(body).getAsJsonObject();
 			if (root.has("error")) {
-				return errorMessageFrom(root.get("error"));
+				JsonElement error = root.get("error");
+				if (error.isJsonObject()) {
+					JsonObject obj = error.getAsJsonObject();
+					String msg = jsonString(obj, "message");
+					if (!msg.isEmpty()) {
+						String type = jsonString(obj, "type");
+						String code = jsonString(obj, "code");
+						StringBuilder sb = new StringBuilder(msg);
+						if (!type.isEmpty() || !code.isEmpty()) {
+							sb.append(" [");
+							if (!type.isEmpty()) {
+								sb.append("type=").append(type);
+							}
+							if (!code.isEmpty()) {
+								if (!type.isEmpty()) {
+									sb.append(", ");
+								}
+								sb.append("code=").append(code);
+							}
+							sb.append("]");
+						}
+						return sb.toString();
+					}
+				}
+				else if (error.isJsonPrimitive()) {
+					return error.getAsString();
+				}
 			}
-			if (root.has("message")) {
-				return root.get("message").getAsString();
+		}
+		catch (Exception ignored) {
+			// fall back to truncated raw response
+		}
+		return abbreviate(body.replaceAll("\\s+", " ").trim(), 200);
+	}
+
+	public static String jsonString(JsonObject o, String key) {
+		if (o != null && o.has(key) && !o.get(key).isJsonNull()) {
+			return o.get(key).getAsString();
+		}
+		return "";
+	}
+
+	public static int jsonInt(JsonObject o, String key) {
+		if (o != null && o.has(key) && !o.get(key).isJsonNull()) {
+			try {
+				return o.get(key).getAsInt();
+			}
+			catch (Exception e) {
+				return 0;
 			}
 		}
-		catch (Exception e) {
-			// yoksay, ham govdeyi dondur
-		}
-		return abbreviate(responseBody, 400);
+		return 0;
 	}
 
-	private static String errorMessageFrom(JsonElement error) {
-		if (error == null || error.isJsonNull()) {
-			return "(bilinmeyen hata)";
-		}
-		if (error.isJsonObject()) {
-			JsonObject o = error.getAsJsonObject();
-			String msg = jsonString(o, "message");
-			String type = jsonString(o, "type");
-			if (msg.isEmpty()) {
-				msg = o.toString();
-			}
-			return type.isEmpty() ? msg : (msg + " [" + type + "]");
-		}
-		return error.toString();
-	}
-
-	static String jsonString(JsonObject o, String name) {
-		if (o == null || !o.has(name) || o.get(name).isJsonNull()) {
-			return "";
-		}
-		try {
-			return o.get(name).getAsString();
-		}
-		catch (Exception e) {
-			return o.get(name).toString();
-		}
-	}
-
-	static int jsonInt(JsonObject o, String name) {
-		if (o == null || !o.has(name) || o.get(name).isJsonNull()) {
-			return 0;
-		}
-		try {
-			return o.get(name).getAsInt();
-		}
-		catch (Exception e) {
-			return 0;
-		}
-	}
-
-	static String abbreviate(String text, int max) {
+	public static String abbreviate(String text, int max) {
 		if (text == null) {
 			return "";
 		}
-		String t = text.trim();
-		if (t.length() <= max) {
-			return t;
+		if (text.length() <= max) {
+			return text;
 		}
-		return t.substring(0, max) + "... (kisaltildi)";
+		return text.substring(0, Math.max(0, max - 3)) + "...";
 	}
 }

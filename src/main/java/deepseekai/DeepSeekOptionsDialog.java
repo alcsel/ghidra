@@ -29,7 +29,7 @@ import ghidra.util.task.TaskLauncher;
 import ghidra.util.task.TaskMonitor;
 
 /**
- * API anahtari ve model ayarlarini duzenleme penceresi.
+ * Dialog for editing API key, model selection, and extension preferences.
  */
 public class DeepSeekOptionsDialog extends JDialog {
 
@@ -56,7 +56,7 @@ public class DeepSeekOptionsDialog extends JDialog {
 		this.plugin = plugin;
 		this.config = config;
 
-		setTitle("DeepSeek AI - Ayarlar");
+		setTitle("DeepSeek AI - Settings");
 		setModal(true);
 		setLayout(new BorderLayout());
 
@@ -81,14 +81,14 @@ public class DeepSeekOptionsDialog extends JDialog {
 		maxCharsSpinner = new JSpinner(
 			new SpinnerNumberModel(config.maxCodeChars, 2000, 400000, 2000));
 
-		languageField = new JComboBox<>(new String[] { "Turkce", "English", "Deutsch", "Francais" });
+		languageField = new JComboBox<>(new String[] { "English", "Turkish", "German", "French", "Chinese", "Spanish" });
 		languageField.setEditable(true);
 		languageField.setSelectedItem(config.language);
 
-		autoComments = new JCheckBox("Yorumlari sormadan uygula", config.autoApplyComments);
-		autoRenames = new JCheckBox("Degisken adlarini sormadan uygula", config.autoApplyRenames);
+		autoComments = new JCheckBox("Auto-apply comments without prompting", config.autoApplyComments);
+		autoRenames = new JCheckBox("Auto-apply variable renames without prompting", config.autoApplyRenames);
 		autoFunctionName =
-			new JCheckBox("Fonksiyon adini sormadan uygula", config.autoApplyFunctionName);
+			new JCheckBox("Auto-apply function name without prompting", config.autoApplyFunctionName);
 
 		statusLabel = new JLabel(" ");
 		statusLabel.setForeground(Color.GRAY);
@@ -108,19 +108,19 @@ public class DeepSeekOptionsDialog extends JDialog {
 		c.anchor = GridBagConstraints.WEST;
 
 		int row = 0;
-		addRow(panel, c, row++, "API anahtari (sk-...)", apiKeyField,
-			"https://platform.deepseek.com adresinden alinir. Ortam degiskeni DEEPSEEK_API_KEY de kullanilabilir.");
-		addRow(panel, c, row++, "API adresi", baseUrlField,
-			"Varsayilan: https://api.deepseek.com");
-		addRow(panel, c, row++, "Model", modelField, "deepseek-chat (hizli) / deepseek-reasoner (derin akil yurutme)");
+		addRow(panel, c, row++, "API Key (sk-...)", apiKeyField,
+			"Obtain from https://platform.deepseek.com. Environment variable DEEPSEEK_API_KEY can also be used.");
+		addRow(panel, c, row++, "Base URL", baseUrlField,
+			"Default: https://api.deepseek.com");
+		addRow(panel, c, row++, "Model", modelField, "deepseek-chat (fast) / deepseek-reasoner (deep reasoning)");
 		addRow(panel, c, row++, "Temperature", temperatureSpinner,
-			"Dusuk deger daha kararli ve tekrarlanabilir sonuc verir.");
-		addRow(panel, c, row++, "Maksimum token", maxTokensSpinner,
-			"Uzun fonksiyonlar icin artirilabilir.");
-		addRow(panel, c, row++, "Zaman asimi (sn)", timeoutSpinner, "");
-		addRow(panel, c, row++, "Maksimum kod karakteri", maxCharsSpinner,
-			"API'ye gonderilecek decompile ciktisi icin ust sinir.");
-		addRow(panel, c, row++, "Yanit dili", languageField, "");
+			"Lower values produce more deterministic and reproducible results.");
+		addRow(panel, c, row++, "Max Tokens", maxTokensSpinner,
+			"Can be increased for long functions.");
+		addRow(panel, c, row++, "Timeout (sec)", timeoutSpinner, "");
+		addRow(panel, c, row++, "Max Code Characters", maxCharsSpinner,
+			"Upper limit for decompiled code characters sent to the API.");
+		addRow(panel, c, row++, "Response Language", languageField, "");
 
 		c.gridx = 1;
 		c.gridy = row++;
@@ -161,14 +161,14 @@ public class DeepSeekOptionsDialog extends JDialog {
 	private JPanel buildButtons() {
 		JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
 
-		JButton test = new JButton("Baglantiyi Test Et");
+		JButton test = new JButton("Test Connection");
 		test.addActionListener(e -> testConnection());
-		JButton save = new JButton("Kaydet");
+		JButton save = new JButton("Save");
 		save.addActionListener(e -> {
 			save();
 			dispose();
 		});
-		JButton cancel = new JButton("Iptal");
+		JButton cancel = new JButton("Cancel");
 		cancel.addActionListener(e -> dispose());
 
 		panel.add(test);
@@ -211,23 +211,23 @@ public class DeepSeekOptionsDialog extends JDialog {
 
 		if (DeepSeekConfig.isBlank(probe.apiKey)) {
 			statusLabel.setForeground(Color.RED);
-			statusLabel.setText("API anahtari bos.");
+			statusLabel.setText("API key is empty.");
 			return;
 		}
 
 		statusLabel.setForeground(Color.GRAY);
-		statusLabel.setText("Baglanti test ediliyor...");
+		statusLabel.setText("Testing connection...");
 		new TaskLauncher(new ConnectionTestTask(probe, statusLabel), null);
 	}
 
-	/** Basit bir istek atarak API anahtarini ve adresi dogrular. */
+	/** Validates API key and connectivity with a minimal prompt. */
 	private static class ConnectionTestTask extends Task {
 
 		private final DeepSeekConfig config;
 		private final JLabel statusLabel;
 
 		ConnectionTestTask(DeepSeekConfig config, JLabel statusLabel) {
-			super("DeepSeek AI: baglanti testi", false, false, true);
+			super("DeepSeek AI: Connection Test", false, false, true);
 			this.config = config;
 			this.statusLabel = statusLabel;
 		}
@@ -238,14 +238,14 @@ public class DeepSeekOptionsDialog extends JDialog {
 			Color color;
 			try {
 				DeepSeekClient.ChatResponse response = new DeepSeekClient().chat(
-					"Kisa cevap ver.", "Merhaba, sadece 'ok' yaz.", config, monitor);
+					"Give a short answer.", "Hello, reply with only 'ok'.", config, monitor);
 				String content = response.content.trim();
-				message = "Baglanti basarili. Yanit: " +
+				message = "Connection successful. Response: " +
 					DeepSeekClient.abbreviate(content, 60);
 				color = new Color(0, 128, 0);
 			}
 			catch (Throwable t) {
-				message = "Baglanti basarisiz: " + t.getMessage();
+				message = "Connection failed: " + t.getMessage();
 				color = Color.RED;
 			}
 			String finalMessage = message;

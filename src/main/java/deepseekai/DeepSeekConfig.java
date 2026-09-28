@@ -1,14 +1,7 @@
 /* ###
  * DeepSeek AI - Ghidra Extension
  *
- * DeepSeek API kullanarak decompile edilmis kodu aciklayan, anlasilmasi zor
- * kisimlara yorum yazan ve degiskenleri isimlendiren Ghidra eklentisi.
- *
  * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
  */
 package deepseekai;
 
@@ -16,45 +9,41 @@ import ghidra.framework.options.ToolOptions;
 import ghidra.util.Msg;
 
 /**
- * Eklenti ayarlari.
+ * Configuration and persistent options for the DeepSeek AI extension.
  * <p>
- * Ayarlar Ghidra arac (tool) opsiyonlarinda saklanir; boylece
- * <b>Edit -&gt; Tool Options -&gt; DeepSeek AI</b> menusunden de gorulup
- * degistirilebilir ve Ghidra yeniden baslatildiginda korunur.
- * <p>
- * API anahtari ayrica {@code DEEPSEEK_API_KEY} ortam degiskeninden de
- * okunur; bu degisken tanimli ise ve opsiyon bos birakilmissa ortam
- * degiskeni kullanilir.
+ * Options are stored under Ghidra's {@code Edit > Tool Options > DeepSeek AI}.
+ * In addition, API keys can be supplied via the {@code DEEPSEEK_API_KEY}
+ * environment variable or a local properties file ({@code ~/.deepseek_ghidra.properties}).
  */
 public class DeepSeekConfig {
 
-	/** Opsiyon grubunun (owner) adi. */
 	public static final String OWNER = "DeepSeek AI";
 
-	private static final String OPT_API_KEY = "API Key";
-	private static final String OPT_BASE_URL = "API Base URL";
-	private static final String OPT_MODEL = "Model";
-	private static final String OPT_TEMPERATURE = "Temperature";
-	private static final String OPT_MAX_TOKENS = "Max Tokens";
-	private static final String OPT_TIMEOUT = "Request Timeout (seconds)";
-	private static final String OPT_LANGUAGE = "Response Language";
-	private static final String OPT_MAX_CHARS = "Max decompiled code characters";
+	public static final String OPT_API_KEY = "API Key";
+	public static final String OPT_BASE_URL = "Base URL";
+	public static final String OPT_MODEL = "Model";
+	public static final String OPT_TEMPERATURE = "Temperature";
+	public static final String OPT_MAX_TOKENS = "Max Tokens";
+	public static final String OPT_TIMEOUT = "Timeout (seconds)";
+	public static final String OPT_LANGUAGE = "Response Language";
+	public static final String OPT_MAX_CHARS = "Max Code Characters";
 	private static final String OPT_AUTO_COMMENTS = "Auto apply comments";
 	private static final String OPT_AUTO_RENAMES = "Auto apply variable renames";
 	private static final String OPT_AUTO_FUNC_NAME = "Auto apply function name";
 
 	public static final String DEFAULT_BASE_URL = "https://api.deepseek.com";
 	public static final String DEFAULT_MODEL = "deepseek-chat";
-	public static final String DEFAULT_LANGUAGE = "Turkce";
+	public static final String DEFAULT_LANGUAGE = "English";
 
 	/**
-	 * API anahtari kaynak onceligi:
+	 * API key resolution order:
 	 * <ol>
-	 * <li>{@code DEEPSEEK_API_KEY} ortam degiskeni (bos degilse)</li>
-	 * <li>Ayarlar penceresi / Edit &gt; Tool Options &gt; DeepSeek AI</li>
+	 * <li>{@code DEEPSEEK_API_KEY} environment variable (if non-empty)</li>
+	 * <li>Local properties file ({@code ~/.deepseek_ghidra.properties})</li>
+	 * <li>Settings dialog / {@code Edit > Tool Options > DeepSeek AI}</li>
 	 * </ol>
-	 * Gizli anahtar bilerek kaynak koda gomulmemistir; boylece depo paylasima
-	 * acik olsa bile sizinti olmaz.
+	 * The secret key is never embedded in source code so public repositories
+	 * remain secure.
 	 */
 	public static final String DEFAULT_API_KEY = "";
 
@@ -70,24 +59,23 @@ public class DeepSeekConfig {
 	public boolean autoApplyRenames = false;
 	public boolean autoApplyFunctionName = false;
 
-	/** true ise API anahtari ortam degiskeninden gelmistir. */
+	/** True if the API key was resolved from the environment variable. */
 	public boolean apiKeyFromEnvironment = false;
 
-	/** true ise API anahtari yerel anahtar dosyasindan gelmistir. */
+	/** True if the API key was resolved from the local properties file. */
 	public boolean apiKeyFromFile = false;
 
 	/**
-	 * Yerel gizli anahtar dosyasi. Depoya hicbir zaman girmez
-	 * ({@code .gitignore} ile dislanir).
+	 * Local secret key file. Never committed to git (excluded by {@code .gitignore}).
 	 */
 	public static final String KEY_FILE_NAME = ".deepseek_ghidra.properties";
 
-	/** Yerel anahtar dosyasinin tam yolu. */
+	/** Full path to the local key file in the user's home directory. */
 	public static java.io.File getKeyFile() {
 		return new java.io.File(System.getProperty("user.home", "."), KEY_FILE_NAME);
 	}
 
-	/** Yerel anahtar dosyasindan apiKey okur. Dosya yoksa/okunamazsa null doner. */
+	/** Reads apiKey from the local key file. Returns null if missing or unreadable. */
 	private static String readKeyFromFile() {
 		java.io.File file = getKeyFile();
 		if (!file.isFile()) {
@@ -100,7 +88,7 @@ public class DeepSeekConfig {
 		}
 		catch (Exception e) {
 			Msg.warn(DeepSeekConfig.class,
-				"Yerel anahtar dosyasi okunamadi: " + file.getAbsolutePath(), e);
+				"Could not read local key file: " + file.getAbsolutePath(), e);
 			return null;
 		}
 		for (String keyName : new String[] { "apiKey", "api_key", "DEEPSEEK_API_KEY", "key" }) {
@@ -112,31 +100,31 @@ public class DeepSeekConfig {
 		return null;
 	}
 
-	/** Opsiyonlari Ghidra'ya kaydeder. */
+	/** Registers options with Ghidra's tool options. */
 	public void register(ToolOptions options) {
 		registerSafely(options, OPT_API_KEY, DEFAULT_API_KEY,
-			"DeepSeek API anahtari (sk-...). Bos birakilirsa DEEPSEEK_API_KEY ortam " +
-				"degiskeni ya da ~/.deepseek_ghidra.properties dosyasi kullanilir.");
+			"DeepSeek API key (sk-...). If left blank, DEEPSEEK_API_KEY environment " +
+				"variable or ~/.deepseek_ghidra.properties is used.");
 		registerSafely(options, OPT_BASE_URL, DEFAULT_BASE_URL,
-			"DeepSeek API sunucusu (orn. https://api.deepseek.com)");
+			"DeepSeek API server URL (e.g. https://api.deepseek.com)");
 		registerSafely(options, OPT_MODEL, DEFAULT_MODEL,
-			"Kullanilacak model: deepseek-chat veya deepseek-reasoner");
+			"Model name: deepseek-chat or deepseek-reasoner");
 		registerSafely(options, OPT_TEMPERATURE, Double.valueOf(0.2),
-			"Modelin yaraticiligi (0.0 = kararli, 2.0 = yaratici)");
+			"Model temperature (0.0 = deterministic, 2.0 = creative)");
 		registerSafely(options, OPT_MAX_TOKENS, Integer.valueOf(8192),
-			"Yanit icin en fazla token sayisi");
+			"Maximum response tokens");
 		registerSafely(options, OPT_TIMEOUT, Integer.valueOf(180),
-			"API istegi zaman asimi (saniye)");
+			"API request timeout in seconds");
 		registerSafely(options, OPT_LANGUAGE, DEFAULT_LANGUAGE,
-			"Aciklamalarin ve yorumlarin dili");
+			"Language for explanations and comments");
 		registerSafely(options, OPT_MAX_CHARS, Integer.valueOf(24000),
-			"API'ye gonderilecek en fazla decompile edilmis kod karakteri");
+			"Maximum characters of decompiled code sent to the API");
 		registerSafely(options, OPT_AUTO_COMMENTS, Boolean.FALSE,
-			"Analiz bittikten sonra yorumlari sormadan uygula");
+			"Automatically apply comments without prompting");
 		registerSafely(options, OPT_AUTO_RENAMES, Boolean.FALSE,
-			"Analiz bittikten sonra degisken isimlendirmelerini sormadan uygula");
+			"Automatically apply variable renames without prompting");
 		registerSafely(options, OPT_AUTO_FUNC_NAME, Boolean.FALSE,
-			"Analiz bittikten sonra fonksiyon adini sormadan uygula");
+			"Automatically apply suggested function name without prompting");
 	}
 
 	private static void registerSafely(ToolOptions options, String name, Object value,
@@ -145,12 +133,12 @@ public class DeepSeekConfig {
 			options.registerOption(name, value, null, description);
 		}
 		catch (Throwable t) {
-			// Opsiyon zaten kayitli olabilir; bu durumda sorun degil.
-			Msg.trace(DeepSeekConfig.class, "Opsiyon kaydedilemedi: " + name, t);
+			// Option may already be registered; this is non-fatal.
+			Msg.trace(DeepSeekConfig.class, "Could not register option: " + name, t);
 		}
 	}
 
-	/** Opsiyonlardan ayarlari okur. */
+	/** Loads settings from Ghidra options. */
 	public void load(ToolOptions options) {
 		apiKey = options.getString(OPT_API_KEY, DEFAULT_API_KEY);
 		baseUrl = options.getString(OPT_BASE_URL, DEFAULT_BASE_URL);
@@ -166,7 +154,7 @@ public class DeepSeekConfig {
 
 		resolveApiKeyFallback();
 
-		// Makul araliklara kirp
+		// Clamp values to reasonable bounds
 		if (temperature < 0.0) {
 			temperature = 0.0;
 		}
@@ -185,15 +173,15 @@ public class DeepSeekConfig {
 	}
 
 	/**
-	 * Ghidra ayarlarini okumadan yalnizca API anahtarini cozumler.
-	 * Teshis betikleri ve komut satiri kullanimi icin.
+	 * Resolves only the API key without loading full Ghidra options.
+	 * Used by diagnostic scripts and headless runs.
 	 */
 	public void loadApiKeyOnly() {
 		apiKey = DEFAULT_API_KEY;
 		resolveApiKeyFallback();
 	}
 
-	/** Anahtar bos ise ortam degiskenini, sonra yerel anahtar dosyasini dener. */
+	/** Tries environment variable first, then the local key file if key is empty. */
 	private void resolveApiKeyFallback() {
 		apiKeyFromEnvironment = false;
 		apiKeyFromFile = false;
@@ -213,7 +201,7 @@ public class DeepSeekConfig {
 		}
 	}
 
-	/** Ayarlari Ghidra'ya yazar. Ortam degiskeninden gelen anahtar yazilmaz. */
+	/** Saves settings to Ghidra options. Keys resolved from env or file are not persisted. */
 	public void save(ToolOptions options) {
 		options.setString(OPT_BASE_URL, baseUrl);
 		options.setString(OPT_MODEL, model);
@@ -227,8 +215,7 @@ public class DeepSeekConfig {
 		options.setBoolean(OPT_AUTO_FUNC_NAME, autoApplyFunctionName);
 
 		if ((apiKeyFromEnvironment || apiKeyFromFile) && !hasExplicitApiKey(options)) {
-			// Kullanici ortam degiskenini / yerel dosyayi kullaniyor;
-			// anahtari Ghidra ayarlarina kopyalamayalim.
+			// User is providing key via env var or local file; avoid writing to Ghidra settings
 			return;
 		}
 		options.setString(OPT_API_KEY, apiKey == null ? "" : apiKey);
@@ -247,15 +234,15 @@ public class DeepSeekConfig {
 		return !isBlank(apiKey);
 	}
 
-	/** API anahtarinin hangi kaynaktan geldigini aciklar. */
+	/** Describes the source of the current API key. */
 	public String apiKeySource() {
 		if (apiKeyFromEnvironment) {
-			return "DEEPSEEK_API_KEY ortam degiskeni";
+			return "DEEPSEEK_API_KEY environment variable";
 		}
 		if (apiKeyFromFile) {
 			return getKeyFile().getAbsolutePath();
 		}
-		return "Ghidra ayarlari (Edit > Tool Options > DeepSeek AI)";
+		return "Ghidra options (Edit > Tool Options > DeepSeek AI)";
 	}
 
 	public static boolean isBlank(String s) {

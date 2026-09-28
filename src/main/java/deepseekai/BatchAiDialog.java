@@ -34,46 +34,41 @@ import ghidra.program.model.listing.FunctionIterator;
 import ghidra.program.model.listing.Program;
 
 /**
- * Toplu (batch) AI analizi icin ayar penceresi.
+ * Setup dialog for batch AI analysis.
  * <p>
- * Maliyet bilinciyle tasarlandi: kac fonksiyonun gonderilecegini ve tahmini
- * token sayisini gosterir; belirli bir sayinin uzerinde onay ister.
+ * Allows configuring function selection filters, modifications to apply,
+ * export options (.c output), caching, and request pacing.
  */
 public class BatchAiDialog extends JDialog {
 
 	private static final long serialVersionUID = 1L;
 
-	/** Onay istemeden islenecek en fazla fonksiyon. */
-	private static final int CONFIRM_THRESHOLD = 15;
+	/** Number of functions above which a cost warning is shown. */
+	private static final int CONFIRM_THRESHOLD = 50;
 
 	private final DeepSeekAIPlugin plugin;
 	private final Program program;
 	private final DeepSeekConfig config;
 
-	private final JRadioButton scopeAll = new JRadioButton("Tum program", true);
-	private final JRadioButton scopeSelection = new JRadioButton("Sadece secili aralik");
-	private final JRadioButton scopeCurrent = new JRadioButton("Sadece imlecteki fonksiyon");
+	private final JRadioButton scopeAll;
+	private final JRadioButton scopeSelection;
+	private final JRadioButton scopeCurrent;
+	private final JCheckBox onlyUndefined;
+	private final JCheckBox skipThunks;
+	private final JSpinner minBytes;
+	private final JSpinner maxBytes;
+	private final JSpinner maxFunctions;
+	private final JSpinner delayMillis;
 
-	private final JCheckBox onlyUndefined = new JCheckBox(
-		"Sadece ismi cozulememis fonksiyonlar (FUN_*/sub_*)", true);
-	private final JCheckBox skipThunks = new JCheckBox("Thunk ve external fonksiyonlari atla", true);
-	private final JSpinner minBytes = new JSpinner(new SpinnerNumberModel(16, 0, 1000000, 8));
-	private final JSpinner maxBytes =
-		new JSpinner(new SpinnerNumberModel(24000, 0, 10000000, 1000));
-	private final JSpinner maxFunctions =
-		new JSpinner(new SpinnerNumberModel(0, 0, 1000000, 10));
-	private final JSpinner delayMillis = new JSpinner(new SpinnerNumberModel(0, 0, 10000, 100));
+	private final JCheckBox applyNames;
+	private final JCheckBox applyVars;
+	private final JCheckBox applyComments;
+	private final JCheckBox useCache;
 
-	private final JCheckBox applyNames = new JCheckBox("Fonksiyon adlarini uygula", true);
-	private final JCheckBox applyVars = new JCheckBox("Degisken adlarini uygula", true);
-	private final JCheckBox applyComments = new JCheckBox("Yorumlari uygula", true);
-	private final JCheckBox useCache = new JCheckBox("Onbellek kullan (ayni fonksiyonu tekrar gonderme)",
-		true);
-
-	private final JCheckBox writeC = new JCheckBox("Zenginlestirilmis .c dosyasi yaz", true);
+	private final JCheckBox writeC;
 	private final JTextField cFileField;
 
-	private final JLabel estimateLabel = new JLabel(" ");
+	private final JLabel estimateLabel;
 
 	public BatchAiDialog(DeepSeekAIPlugin plugin, Program program, DeepSeekConfig config) {
 		super();
@@ -81,17 +76,36 @@ public class BatchAiDialog extends JDialog {
 		this.program = program;
 		this.config = config;
 
-		setTitle("DeepSeek AI - Tum Fonksiyonlari Analiz Et");
+		setTitle("DeepSeek AI - Batch Analysis");
 		setModal(true);
 		setLayout(new BorderLayout());
 
-		cFileField = new JTextField(defaultOutputPath(), 40);
-		cFileField.setEnabled(writeC.isSelected());
-		writeC.addActionListener(e -> cFileField.setEnabled(writeC.isSelected()));
+		int totalFunctions = allFunctions().size();
+		scopeAll = new JRadioButton("All functions in program (" + totalFunctions + ")", true);
+		scopeSelection = new JRadioButton("Functions in current selection");
+		scopeCurrent = new JRadioButton("Only current function");
+
+		onlyUndefined = new JCheckBox(
+			"Only undefined function names (FUN_xxxx, sub_xxxx)", true);
+		skipThunks = new JCheckBox("Skip external and thunk functions", true);
+
+		minBytes = new JSpinner(new SpinnerNumberModel(16, 0, 1000000, 16));
+		maxBytes = new JSpinner(new SpinnerNumberModel(24000, 0, 1000000, 500));
+		maxFunctions = new JSpinner(new SpinnerNumberModel(0, 0, 50000, 10));
+		delayMillis = new JSpinner(new SpinnerNumberModel(0, 0, 10000, 100));
+
+		applyNames = new JCheckBox("Auto-rename functions with AI suggested names", true);
+		applyVars = new JCheckBox("Auto-rename variables (parameters & locals)", true);
+		applyComments = new JCheckBox("Auto-add technical comments to complex code lines", true);
+		useCache = new JCheckBox("Use cache (skip functions already analyzed)", true);
+
+		writeC = new JCheckBox("Export enriched C pseudocode to file", true);
+		cFileField = new JTextField(defaultOutputPath(), 28);
+
+		estimateLabel = new JLabel(" ");
 
 		if (plugin.getProgramSelection() == null || plugin.getProgramSelection().isEmpty()) {
 			scopeSelection.setEnabled(false);
-			scopeSelection.setToolTipText("Once Listing'de bir adres araligi secin.");
 		}
 		if (plugin.getProgramLocation() == null) {
 			scopeCurrent.setEnabled(false);
@@ -129,7 +143,7 @@ public class BatchAiDialog extends JDialog {
 		c.gridwidth = 3;
 
 		int row = 0;
-		panel.add(section("1) Hangi fonksiyonlar?"), at(c, 0, row++));
+		panel.add(section("1) Scope & Filters"), at(c, 0, row++));
 		c.gridwidth = 1;
 		c.gridx = 0;
 		c.gridy = row++;
@@ -149,7 +163,7 @@ public class BatchAiDialog extends JDialog {
 		c.gridwidth = 1;
 		c.gridx = 0;
 		c.gridy = row;
-		panel.add(new JLabel("En az / en fazla boyut (bayt):"), c);
+		panel.add(new JLabel("Min / max function size (bytes):"), c);
 		c.gridx = 1;
 		JPanel sizePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
 		sizePanel.add(minBytes);
@@ -158,19 +172,19 @@ public class BatchAiDialog extends JDialog {
 		panel.add(sizePanel, c);
 		c.gridx = 0;
 		c.gridy = ++row;
-		panel.add(new JLabel("En fazla fonksiyon (0 = sinirsiz):"), c);
+		panel.add(new JLabel("Max functions to process (0 = unlimited):"), c);
 		c.gridx = 1;
 		panel.add(maxFunctions, c);
 		c.gridx = 0;
 		c.gridy = ++row;
-		panel.add(new JLabel("Istekler arasi bekleme (ms):"), c);
+		panel.add(new JLabel("Delay between requests (ms):"), c);
 		c.gridx = 1;
 		panel.add(delayMillis, c);
 
 		c.gridx = 0;
 		c.gridy = ++row;
 		c.gridwidth = 3;
-		panel.add(section("2) Ne uygulanacak?"), c);
+		panel.add(section("2) Actions to Apply"), c);
 		c.gridwidth = 1;
 		c.gridx = 0;
 		c.gridy = ++row;
@@ -185,7 +199,7 @@ public class BatchAiDialog extends JDialog {
 
 		c.gridx = 0;
 		c.gridy = ++row;
-		panel.add(section("3) Cikti"), c);
+		panel.add(section("3) Output Options"), c);
 		c.gridwidth = 1;
 		c.gridx = 0;
 		c.gridy = ++row;
@@ -194,13 +208,13 @@ public class BatchAiDialog extends JDialog {
 		c.gridwidth = 1;
 		c.gridy = ++row;
 		c.gridx = 0;
-		panel.add(new JLabel("Dosya:"), c);
+		panel.add(new JLabel("File:"), c);
 		c.gridx = 1;
 		c.weightx = 1.0;
 		panel.add(cFileField, c);
 		c.gridx = 2;
 		c.weightx = 0.0;
-		JButton browse = new JButton("Gozat...");
+		JButton browse = new JButton("Browse...");
 		browse.addActionListener(e -> chooseFile());
 		panel.add(browse, c);
 
@@ -210,7 +224,7 @@ public class BatchAiDialog extends JDialog {
 		estimateLabel.setForeground(new Color(0, 90, 160));
 		panel.add(estimateLabel, c);
 
-		// Filtre degisince tahmini guncelle
+		// Update estimate when filters change
 		onlyUndefined.addActionListener(e -> updateEstimate());
 		skipThunks.addActionListener(e -> updateEstimate());
 		scopeAll.addActionListener(e -> updateEstimate());
@@ -238,9 +252,9 @@ public class BatchAiDialog extends JDialog {
 
 	private JPanel buildButtons() {
 		JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
-		JButton start = new JButton("Analizi Baslat");
+		JButton start = new JButton("Start Analysis");
 		start.addActionListener(e -> start());
-		JButton cancel = new JButton("Iptal");
+		JButton cancel = new JButton("Cancel");
 		cancel.addActionListener(e -> dispose());
 		panel.add(start);
 		panel.add(cancel);
@@ -249,7 +263,7 @@ public class BatchAiDialog extends JDialog {
 
 	private void chooseFile() {
 		JFileChooser chooser = new JFileChooser();
-		chooser.setDialogTitle("C ciktisini kaydet");
+		chooser.setDialogTitle("Save C Pseudocode Output");
 		chooser.setSelectedFile(new File(cFileField.getText()));
 		if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
 			cFileField.setText(chooser.getSelectedFile().getAbsolutePath());
@@ -285,7 +299,7 @@ public class BatchAiDialog extends JDialog {
 		return options;
 	}
 
-	/** Programa ait fonksiyonlarin tamami (adres sirasina gore). */
+	/** Returns all functions in the program sorted by address. */
 	private List<Function> allFunctions() {
 		List<Function> list = new ArrayList<>();
 		FunctionIterator iterator = program.getFunctionManager().getFunctions(true);
@@ -307,13 +321,13 @@ public class BatchAiDialog extends JDialog {
 			long approxTokens = (long) count * 2500L;
 			String extra = "";
 			if (!config.hasApiKey()) {
-				extra = "   |   UYARI: API anahtari tanimli degil!";
+				extra = "   |   WARNING: API key not configured!";
 			}
-			estimateLabel.setText("Secilen fonksiyon: " + count + "   |   tahmini ~" +
-				String.format("%,d", approxTokens) + " token" + extra);
+			estimateLabel.setText("Selected functions: " + count + "   |   Estimated ~" +
+				String.format("%,d", approxTokens) + " tokens" + extra);
 		}
 		catch (Throwable t) {
-			estimateLabel.setText("Secilen fonksiyon hesaplanamadi: " + t.getMessage());
+			estimateLabel.setText("Could not calculate selected functions: " + t.getMessage());
 		}
 	}
 
@@ -321,25 +335,25 @@ public class BatchAiDialog extends JDialog {
 		List<Function> functions = selectedFunctions();
 		if (functions.isEmpty()) {
 			JOptionPane.showMessageDialog(this,
-				"Filtrelere uyan fonksiyon bulunamadi.\n\n" +
-					"Ipucu: 'Sadece ismi cozulememis fonksiyonlar' kutusunu kaldirip tekrar deneyin.",
+				"No functions match the selected filters.\n\n" +
+					"Tip: Try unchecking 'Only undefined function names'.",
 				"DeepSeek AI", JOptionPane.WARNING_MESSAGE);
 			return;
 		}
 		if (!config.hasApiKey()) {
 			JOptionPane.showMessageDialog(this,
-				"API anahtari tanimli degil. Once Ayarlar penceresinden girin.",
+				"API key is not configured. Please set it in Settings first.",
 				"DeepSeek AI", JOptionPane.ERROR_MESSAGE);
 			return;
 		}
 		if (functions.size() > CONFIRM_THRESHOLD) {
 			long approxTokens = (long) functions.size() * 2500L;
 			int answer = JOptionPane.showConfirmDialog(this,
-				functions.size() + " fonksiyon DeepSeek'e gonderilecek.\n" +
-					"Tahmini tuketim: ~" + String.format("%,d", approxTokens) + " token.\n" +
-					"Bu islem ucretli olabilir ve uzun surebilir.\n\n" +
-					"Devam edilsin mi?",
-				"DeepSeek AI - Maliyet onayi", JOptionPane.YES_NO_OPTION,
+				functions.size() + " functions will be sent to DeepSeek.\n" +
+					"Estimated consumption: ~" + String.format("%,d", approxTokens) + " tokens.\n" +
+					"This may incur API costs and take several minutes.\n\n" +
+					"Continue?",
+				"DeepSeek AI - Cost Confirmation", JOptionPane.YES_NO_OPTION,
 				JOptionPane.WARNING_MESSAGE);
 			if (answer != JOptionPane.YES_OPTION) {
 				return;

@@ -17,8 +17,8 @@ import ghidra.app.decompiler.ClangBreak;
 import ghidra.app.decompiler.ClangNode;
 import ghidra.app.decompiler.ClangToken;
 import ghidra.app.decompiler.ClangTokenGroup;
-import ghidra.app.decompiler.DecompileResults;
 import ghidra.app.decompiler.DecompInterface;
+import ghidra.app.decompiler.DecompileResults;
 import ghidra.app.decompiler.DecompiledFunction;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.data.DataType;
@@ -31,16 +31,16 @@ import ghidra.util.Msg;
 import ghidra.util.task.TaskMonitor;
 
 /**
- * Decompiler cagrilarini ve ciktinin islenmesini toplar.
+ * Utility helper for decompilation operations and token stream extraction.
  */
 public class DecompilerHelper {
 
 	private DecompilerHelper() {
-		// yardimci sinif
+		// utility class
 	}
 
 	/**
-	 * Verilen fonksiyonu decompile eder ve model icin gerekli tum baglami toplar.
+	 * Decompiles the specified function and collects full context for the model.
 	 */
 	public static DecompiledContext build(Program program, Function function, TaskMonitor monitor,
 			int maxCodeChars) throws Exception {
@@ -57,20 +57,19 @@ public class DecompilerHelper {
 	}
 
 	/**
-	 * Toplu (batch) analiz icin: cagiran tarafin actigi bir {@link DecompInterface}
-	 * uzerinden decompile eder. Bu sayede yuzlerce fonksiyon icin yeni decompiler
-	 * sureci baslatilmaz.
+	 * Used for batch analysis: decompiles using a caller-provided {@link DecompInterface},
+	 * avoiding the overhead of creating new decompiler processes repeatedly.
 	 * <p>
-	 * DIKKAT: Bu metot decompiler'i KAPATMAZ; sahipligi cagirana aittir.
+	 * NOTE: This method does NOT dispose the decompiler; ownership belongs to caller.
 	 */
 	public static DecompiledContext buildWith(DecompInterface decompiler, Program program,
 			Function function, TaskMonitor monitor, int maxCodeChars) throws Exception {
 
 		DecompileResults results = decompiler.decompileFunction(function, 180, monitor);
 		if (results == null || !results.decompileCompleted()) {
-			String message = results == null ? "decompiler sonuc dondurmedi"
+			String message = results == null ? "Decompiler returned no results"
 					: results.getErrorMessage();
-			throw new IOException("Decompile edilemedi: " + message);
+			throw new IOException("Could not decompile function: " + message);
 		}
 
 		DecompiledContext context = new DecompiledContext();
@@ -100,8 +99,7 @@ public class DecompilerHelper {
 	}
 
 	/**
-	 * Satirlari adres etiketleriyle birlestirir. Modelin dondurdugu adresler bu
-	 * etiketlerle birebir eslesir.
+	 * Combines code lines with address prefix tags.
 	 */
 	private static String annotate(DecompiledContext context, int maxCodeChars) {
 		StringBuilder annotated = new StringBuilder();
@@ -109,7 +107,7 @@ public class DecompilerHelper {
 		for (DecompiledContext.CodeLine line : context.lines) {
 			if (used > maxCodeChars) {
 				context.codeTruncated = true;
-				annotated.append("... /* kod kisaltildi */\n");
+				annotated.append("... /* code truncated */\n");
 				break;
 			}
 			String label = line.address == null ? "[          ]"
@@ -133,7 +131,7 @@ public class DecompilerHelper {
 			}
 		}
 		catch (Throwable t) {
-			Msg.trace(DecompilerHelper.class, "Markup satirlara cevrilemedi, ham kod kullanilacak",
+			Msg.trace(DecompilerHelper.class, "Could not convert markup to lines, falling back to raw code",
 				t);
 			context.lines.clear();
 		}
@@ -150,8 +148,8 @@ public class DecompilerHelper {
 	}
 
 	/**
-	 * Decompiler'in Clang agacini dolasir. {@link ClangBreak} tokenlari satir
-	 * sonlarini belirtir; her satirin adresi ilk adresli token'dan alinir.
+	 * Walks the decompiler Clang AST token tree. {@link ClangBreak} tokens represent
+	 * line boundaries; each line address is derived from the first address-bearing token.
 	 */
 	private static void walk(ClangNode node, WalkState state,
 			List<DecompiledContext.CodeLine> out) {
@@ -191,7 +189,7 @@ public class DecompilerHelper {
 			}
 		}
 		catch (Throwable t) {
-			Msg.trace(DecompilerHelper.class, "Semboller okunamadi", t);
+			Msg.trace(DecompilerHelper.class, "Could not read symbols", t);
 		}
 	}
 
@@ -241,14 +239,13 @@ public class DecompilerHelper {
 			}
 		}
 		catch (Throwable t) {
-			Msg.trace(DecompilerHelper.class, "Cagrilan fonksiyonlar okunamadi", t);
+			Msg.trace(DecompilerHelper.class, "Could not read called functions", t);
 		}
 		return names;
 	}
 
 	/**
-	 * Islenmis HighSymbol nesnelerini isimle aranabilir sekilde donerir.
-	 * Degisken isimlendirme sirasinda kullanilir.
+	 * Returns HighSymbol objects mapped by name. Used during variable renaming.
 	 */
 	public static Map<String, HighSymbol> symbolIndex(HighFunction highFunction) {
 		Map<String, HighSymbol> index = new LinkedHashMap<>();
@@ -272,8 +269,7 @@ public class DecompilerHelper {
 	}
 
 	/**
-	 * Fonksiyonu yeniden decompile edip HighFunction dondurur. Degisken
-	 * isimlendirme islemleri guncel bir HighFunction gerektirir.
+	 * Re-decompiles the function and returns an up-to-date HighFunction.
 	 */
 	public static HighFunction decompileHighFunction(Program program, Function function,
 			TaskMonitor monitor) throws Exception {
@@ -282,7 +278,7 @@ public class DecompilerHelper {
 			decompiler.openProgram(program);
 			DecompileResults results = decompiler.decompileFunction(function, 180, monitor);
 			if (results == null || !results.decompileCompleted()) {
-				throw new IOException("Degiskenler icin decompile yenilenemedi: " +
+				throw new IOException("Could not refresh decompilation for variables: " +
 					(results == null ? "?" : results.getErrorMessage()));
 			}
 			return results.getHighFunction();

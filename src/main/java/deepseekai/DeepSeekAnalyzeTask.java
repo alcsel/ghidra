@@ -14,8 +14,8 @@ import ghidra.util.task.Task;
 import ghidra.util.task.TaskMonitor;
 
 /**
- * Arka planda fonksiyonu decompile eder, DeepSeek'e gonderir ve sonucu
- * eklentiye iletir.
+ * Background task that decompiles the selected function, queries the DeepSeek API,
+ * and passes the parsed result to the plugin.
  */
 public class DeepSeekAnalyzeTask extends Task {
 
@@ -26,7 +26,7 @@ public class DeepSeekAnalyzeTask extends Task {
 
 	public DeepSeekAnalyzeTask(DeepSeekAIPlugin plugin, Program program, Function function,
 			DeepSeekConfig config) {
-		super("DeepSeek AI: " + function.getName() + " analiz ediliyor", false, true, false);
+		super("DeepSeek AI: Analyzing " + function.getName(), false, true, false);
 		this.plugin = plugin;
 		this.program = program;
 		this.function = function;
@@ -36,24 +36,24 @@ public class DeepSeekAnalyzeTask extends Task {
 	@Override
 	public void run(TaskMonitor monitor) throws CancelledException {
 		try {
-			monitor.setMessage("Decompile ediliyor: " + function.getName());
+			monitor.setMessage("Decompiling: " + function.getName());
 			DecompiledContext context =
 				DecompilerHelper.build(program, function, monitor, config.maxCodeChars);
 			monitor.checkCanceled();
 
-			monitor.setMessage("DeepSeek API'ye gonderiliyor (" + config.model + ")...");
+			monitor.setMessage("Sending to DeepSeek API (" + config.model + ")...");
 			String system = Prompt.systemPrompt(config);
 			String user = Prompt.userPrompt(context, config);
 			DeepSeekClient.ChatResponse response =
 				new DeepSeekClient().chat(system, user, config, monitor);
 			monitor.checkCanceled();
 
-			monitor.setMessage("Yanit isleniyor...");
+			monitor.setMessage("Processing response...");
 			AnalysisOutcome outcome = AnalysisOutcome.parse(response.content, program);
 			outcome.usageText = response.usageText();
 			if (!response.finishReason.isEmpty()) {
 				outcome.usageText = outcome.usageText.isEmpty() ? response.finishReason
-						: (outcome.usageText + ", bitis: " + response.finishReason);
+						: (outcome.usageText + ", finish: " + response.finishReason);
 			}
 
 			SwingUtilities.invokeLater(

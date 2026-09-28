@@ -1,14 +1,18 @@
-# Derleme ciktilari
+# Build outputs
 /build/
 /dist/
 /.gradle/
+bin/
+out/
 *.log
 
-# Ghidra proje dosyalari
+# Ghidra project files & analysis caches
 *.gpr
 *.rep/
+*.cache.json
+*_ai_decompiled.c
 
-# IDE
+# IDE files
 .idea/
 *.iml
 *.ipr
@@ -19,13 +23,18 @@
 .project
 nbproject/
 
-# Isletim sistemi
+# Operating system files
 Thumbs.db
 Desktop.ini
 desktop.ini
 .DS_Store
+ehthumbs.db
 
-# Yerel ayarlar / sirlar (API anahtari ASLA depoya girmemeli)
+# Secrets & local configuration (API keys must never be committed)
 secrets.properties
 *.local.properties
 .deepseek_ghidra.properties
+.env
+.env.*
+*.key
+*.token

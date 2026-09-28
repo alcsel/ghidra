@@ -13,64 +13,64 @@ import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.listing.Function;
 
 /**
- * Toplu (batch) AI analizinin ayarlari.
+ * Configuration options and filters for batch AI analysis.
  */
 public class BatchAiOptions {
 
-	/** Hangi fonksiyonlar islenecek. */
+	/** Target function scope. */
 	public enum Scope {
-		/** Programdaki tum fonksiyonlar. */
+		/** All functions in the program. */
 		ALL,
-		/** Kullanicinin secmis oldugu adres araligindaki fonksiyonlar. */
+		/** Functions within the user's active address selection. */
 		SELECTION,
-		/** Yalnizca imlecin bulundugu fonksiyon. */
+		/** Only the function containing the cursor. */
 		CURRENT
 	}
 
 	public Scope scope = Scope.ALL;
 
-	/** Secili aralik (scope == SELECTION iken kullanilir). */
+	/** Active selection (used when scope == SELECTION). */
 	public AddressSetView selection;
 
-	/** Yalnizca adi cozulememis fonksiyonlar (FUN_xxxx, sub_xxxx) islensin. */
+	/** Only process functions with auto-generated names (FUN_xxxx, sub_xxxx). */
 	public boolean onlyUndefinedNames = true;
 
 	public boolean skipThunks = true;
 	public boolean skipExternal = true;
 
-	/** Bu boyutun altindaki fonksiyonlar atlanir (bayt). 0 = filtre yok. */
+	/** Skip functions smaller than this size in bytes (0 = no filter). */
 	public int minFunctionBytes = 16;
 
-	/** Bu boyutu asan fonksiyonlar atlanir (bayt). 0 = filtre yok. */
+	/** Skip functions larger than this size in bytes (0 = no filter). */
 	public int maxFunctionBytes = 24000;
 
-	/** Bir calistirmada islenecek en fazla fonksiyon (0 = sinirsiz). */
+	/** Maximum number of functions to process in a single run (0 = unlimited). */
 	public int maxFunctions = 0;
 
-	/** API istekleri arasinda beklenecek sure (ms). */
+	/** Delay between API requests in milliseconds (useful for rate limiting). */
 	public int delayMillis = 0;
 
-	/** Uygulanacak degisiklikler. */
+	/** Modifications to automatically apply. */
 	public boolean applyFunctionNames = true;
 	public boolean applyVariableRenames = true;
 	public boolean applyComments = true;
 
-	/** Onbellekten yararlan (ayni fonksiyon iki kez API'ye gonderilmez). */
+	/** Use persistent cache (avoids sending the same function to the API twice). */
 	public boolean useCache = true;
 
-	/** Daha once uygulanmis degisiklikleri tekrar uygulama. */
+	/** Skip re-applying modifications that have already been applied. */
 	public boolean skipAlreadyApplied = true;
 
-	/** Sirasiyla cagrilan fonksiyonlari da baglam olarak gonder (daha isabetli, daha pahali). */
+	/** Include called function names as context (higher accuracy, slightly more tokens). */
 	public boolean includeCallersContext = false;
 
-	/** Zenginlestirilmis C cikti dosyasi (null = dosya yazilmaz). */
+	/** Enriched C pseudocode output file (null = no file export). */
 	public File cOutputFile;
 
-	/** Onbellek dosyasi (null ise otomatik belirlenir). */
+	/** Cache file path (null = automatically determined). */
 	public File cacheFile;
 
-	/** Ozet: listeye uyan fonksiyonlari secer. */
+	/** Filters the input function list according to the configured options. */
 	public List<Function> selectFunctions(List<Function> all, Function current) {
 		List<Function> chosen = new ArrayList<>();
 		int limit = maxFunctions <= 0 ? Integer.MAX_VALUE : maxFunctions;
@@ -127,7 +127,7 @@ public class BatchAiOptions {
 		return true;
 	}
 
-	/** Ghidra'nin otomatik urettigi isim mi (FUN_00401040, sub_401000, thunk_FUN_...)? */
+	/** Returns true if the function has an auto-generated Ghidra name. */
 	public static boolean isUndefinedName(String name) {
 		if (name == null) {
 			return false;

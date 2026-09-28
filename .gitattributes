@@ -1,22 +1,22 @@
-# Tum metin dosyalarinda satir sonlarini normalize et
+# Normalize line endings across all text files
 * text=auto
 
-# Kabuk betikleri LF olmali
+# Shell scripts must use LF
 gradlew text eol=lf
 *.sh text eol=lf
 
-# Windows betikleri CRLF olmali
+# Windows scripts must use CRLF
 *.bat text eol=crlf
 *.ps1 text eol=crlf
 
-# Kaynak ve yapilandirma
+# Sources and configuration files
 *.java text
 *.gradle text
 *.properties text
 *.xml text
 *.md text
 
-# Ikili dosyalar
+# Binary files
 *.jar binary
 *.zip binary
 *.png binary

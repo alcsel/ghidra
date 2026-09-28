@@ -8,9 +8,7 @@ package deepseekai;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -25,11 +23,14 @@ import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.listing.Program;
 
 /**
- * Modelin dondurdugu JSON yanitinin islenmis hali.
+ * Structured outcome returned by the DeepSeek analysis.
+ * <p>
+ * Parses the JSON response received from the model and validates addresses,
+ * variable names, and confidence values.
  */
 public class AnalysisOutcome {
 
-	/** Kod satirina eklenecek yorum onerisi. */
+	/** Line comment suggestion. */
 	public static class LineComment {
 		public String rawAddress = "";
 		public Address address;
@@ -39,7 +40,7 @@ public class AnalysisOutcome {
 		public String note = "";
 	}
 
-	/** Degisken isimlendirme onerisi. */
+	/** Variable rename suggestion. */
 	public static class VarRename {
 		public String oldName = "";
 		public String newName = "";
@@ -50,7 +51,7 @@ public class AnalysisOutcome {
 		public String note = "";
 	}
 
-	/** Anlasilmasi zor kisim. */
+	/** Complex section identified by the model. */
 	public static class HardPart {
 		public String address = "";
 		public String explanation = "";
@@ -65,11 +66,11 @@ public class AnalysisOutcome {
 	public final List<HardPart> hardParts = new ArrayList<>();
 	public final List<String> uncertainties = new ArrayList<>();
 
-	/** Modelin ham yaniti (hata ayiklama icin). */
+	/** Raw response text from the model (for debugging/inspection). */
 	public String rawResponse = "";
-	/** Token kullanimi gibi ek bilgiler. */
+	/** Token usage information. */
 	public String usageText = "";
-	/** Yanit gecerli JSON olarak cozumlendiyse true. */
+	/** True if the response was successfully parsed from JSON. */
 	public boolean parsedFromJson;
 
 	private static final Pattern VALID_IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]{1,63}");
@@ -83,8 +84,8 @@ public class AnalysisOutcome {
 		"namespace", "using"));
 
 	/**
-	 * Model yanitini cozumler. Yanit gecerli JSON degilse metnin tamami aciklama
-	 * olarak kabul edilir; boylece kullanici en azindan aciklamayi gorebilir.
+	 * Parses the model response. If the response is not valid JSON, the entire text
+	 * is treated as a summary so the user can still read the explanation.
 	 */
 	public static AnalysisOutcome parse(String content, Program program) {
 		AnalysisOutcome outcome = new AnalysisOutcome();
@@ -124,11 +125,11 @@ public class AnalysisOutcome {
 			}
 			if (item.address == null) {
 				item.apply = false;
-				item.note = "adres cozumlenemedi";
+				item.note = "address could not be resolved";
 			}
 			else if (!usedAddresses.add(item.address.toString())) {
 				item.apply = false;
-				item.note = "ayni adres icin yinelenen yorum";
+				item.note = "duplicate comment for same address";
 			}
 			outcome.lineComments.add(item);
 		}
@@ -151,15 +152,15 @@ public class AnalysisOutcome {
 			}
 			if (item.oldName.equals(item.newName)) {
 				item.apply = false;
-				item.note = "isim degismemis";
+				item.note = "name unchanged";
 			}
 			else if (!isValidIdentifier(item.newName)) {
 				item.apply = false;
-				item.note = "gecersiz degisken adi";
+				item.note = "invalid variable name";
 			}
 			else if (!usedNames.add(item.newName)) {
 				item.apply = false;
-				item.note = "ayni yeni isim birden fazla kez kullanilmis";
+				item.note = "duplicate new variable name";
 			}
 			outcome.varRenames.add(item);
 		}
@@ -193,11 +194,11 @@ public class AnalysisOutcome {
 		return outcome;
 	}
 
-	/** Model yanitindan JSON nesnesini ayiklar (markdown citlari temizler). */
+	/** Extracts JSON object text from model response (stripping markdown code fences). */
 	static String extractJsonObject(String text) {
 		String trimmed = text == null ? "" : text.trim();
 		if (trimmed.isEmpty()) {
-			throw new IllegalArgumentException("bos yanit");
+			throw new IllegalArgumentException("empty response");
 		}
 		int fence = trimmed.indexOf("```");
 		if (fence >= 0) {
@@ -234,7 +235,7 @@ public class AnalysisOutcome {
 		}
 	}
 
-	/** Fonksiyon adi onerisini dogrular; gecersizse bos dondurur. */
+	/** Validates function name suggestion; returns empty string if invalid. */
 	static String sanitizeFunctionName(String name) {
 		if (name == null) {
 			return "";
@@ -249,80 +250,59 @@ public class AnalysisOutcome {
 		return value;
 	}
 
-	/** Gecerli ve guvenli bir C tanimlayicisi mi? */
 	public static boolean isValidIdentifier(String name) {
-		if (name == null || !VALID_IDENTIFIER.matcher(name).matches()) {
+		if (name == null || name.isEmpty()) {
 			return false;
 		}
-		if (name.startsWith("__")) {
+		if (!VALID_IDENTIFIER.matcher(name).matches()) {
 			return false;
 		}
 		return !C_KEYWORDS.contains(name.toLowerCase());
 	}
 
-	static String string(JsonObject o, String name) {
-		if (o == null || !o.has(name) || o.get(name).isJsonNull()) {
-			return "";
-		}
-		JsonElement element = o.get(name);
-		if (element.isJsonPrimitive()) {
-			try {
-				return element.getAsString();
-			}
-			catch (Exception e) {
-				return element.toString();
-			}
-		}
-		return element.toString();
-	}
-
-	static double number(JsonObject o, String name, double fallback) {
-		if (o == null || !o.has(name) || o.get(name).isJsonNull()) {
-			return fallback;
-		}
-		try {
-			return o.get(name).getAsDouble();
-		}
-		catch (Exception e) {
-			return fallback;
-		}
-	}
-
-	static JsonArray array(JsonObject o, String name) {
-		if (o == null || !o.has(name) || !o.get(name).isJsonArray()) {
-			return new JsonArray();
-		}
-		return o.getAsJsonArray(name);
-	}
-
-	/** Uygulanacak degisken isimlendirmelerini dondurur. */
 	public List<VarRename> selectedRenames() {
 		List<VarRename> list = new ArrayList<>();
-		for (VarRename rename : varRenames) {
-			if (rename.apply) {
-				list.add(rename);
+		for (VarRename r : varRenames) {
+			if (r.apply) {
+				list.add(r);
 			}
 		}
 		return list;
 	}
 
-	/** Uygulanacak yorumlari dondurur. */
 	public List<LineComment> selectedComments() {
 		List<LineComment> list = new ArrayList<>();
-		for (LineComment comment : lineComments) {
-			if (comment.apply && comment.address != null) {
-				list.add(comment);
+		for (LineComment c : lineComments) {
+			if (c.apply && c.address != null) {
+				list.add(c);
 			}
 		}
 		return list;
 	}
 
-	/** Onaylanan degiskenleri isim -> oneri seklinde dondurur (yinelemeleri eler). */
-	public Map<String, VarRename> selectedRenameMap() {
-		Map<String, VarRename> map = new LinkedHashMap<>();
-		for (VarRename rename : selectedRenames()) {
-			map.putIfAbsent(rename.oldName, rename);
+	private static String string(JsonObject o, String key) {
+		if (o.has(key) && !o.get(key).isJsonNull()) {
+			return o.get(key).getAsString();
 		}
-		return map;
+		return "";
+	}
+
+	private static double number(JsonObject o, String key, double defaultValue) {
+		if (o.has(key) && !o.get(key).isJsonNull()) {
+			try {
+				return o.get(key).getAsDouble();
+			}
+			catch (Exception e) {
+				return defaultValue;
+			}
+		}
+		return defaultValue;
+	}
+
+	private static JsonArray array(JsonObject o, String key) {
+		if (o.has(key) && o.get(key).isJsonArray()) {
+			return o.getAsJsonArray(key);
+		}
+		return new JsonArray();
 	}
 }

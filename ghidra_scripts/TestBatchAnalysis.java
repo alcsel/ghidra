@@ -1,13 +1,13 @@
 /* ###
  * DeepSeek AI - Ghidra Extension
  *
- * Teshis/test betigi: toplu (batch) AI analizini kucuk bir ornekle calistirir.
+ * Diagnostic/test script: runs batch AI analysis on a small sample of functions.
  *
- * Ghidra'da : Window > Script Manager > TestBatchAnalysis > Run
+ * In Ghidra : Window > Script Manager > TestBatchAnalysis > Run
  * Headless  : analyzeHeadless ... -postProcess -postScript TestBatchAnalysis.java api
  *
- * 'api' argumani verilmezse API cagrisi YAPILMAZ (sadece fonksiyon listesini gosterir).
- * 'api' verilirse gercek DeepSeek cagrisi yapilir ve sonuclar programa uygulanir.
+ * If 'api' argument is not supplied, no API call is made (function selection only).
+ * If 'api' is supplied, actual DeepSeek calls are made and changes applied.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  */
@@ -32,9 +32,8 @@ public class TestBatchAnalysis extends GhidraScript {
 
 	@Override
 	protected void run() throws Exception {
-		Program program = getCurrentProgram();
 		if (program == null) {
-			println("Acik program yok.");
+			println("Please open a program first.");
 			return;
 		}
 
@@ -68,18 +67,20 @@ public class TestBatchAnalysis extends GhidraScript {
 		while (iterator.hasNext()) {
 			all.add(iterator.next());
 		}
+
 		List<Function> chosen = options.selectFunctions(all, null);
 
-		println("=== Toplu analiz testi ===");
+		println("=== Batch Analysis Test ===");
 		println("Program          : " + program.getName());
-		println("Toplam fonksiyon : " + all.size());
-		println("Secilen          : " + chosen.size());
+		println("Total functions  : " + all.size());
+		println("Selected         : " + chosen.size());
 		for (Function f : chosen) {
-			println("   - " + f.getName() + "  (" + f.getBody().getNumAddresses() + " bayt)");
+			println("   - " + f.getName() + "  (" + f.getBody().getNumAddresses() + " bytes)");
 		}
 
 		if (!useApi) {
-			println("(API cagrisi atlandi; denemek icin 'api' argumani verin.)");
+			println("");
+			println("(API call skipped; pass 'api' argument to test real request.)");
 			return;
 		}
 
@@ -87,7 +88,7 @@ public class TestBatchAnalysis extends GhidraScript {
 		config.loadApiKeyOnly();
 		config.maxTokens = 1500;
 		if (!config.hasApiKey()) {
-			println("API anahtari yok - '" + DeepSeekConfig.getKeyFile() + "'");
+			println("API key not found - '" + DeepSeekConfig.getKeyFile() + "'");
 			return;
 		}
 
@@ -97,7 +98,7 @@ public class TestBatchAnalysis extends GhidraScript {
 		println(result.summary());
 
 		println("");
-		println("--- Fonksiyon adlari (guncel) ---");
+		println("--- Updated Function Names ---");
 		for (Function f : chosen) {
 			println("   " + f.getName() + "   @ " + f.getEntryPoint());
 		}
@@ -105,7 +106,7 @@ public class TestBatchAnalysis extends GhidraScript {
 		File cFile = options.cOutputFile;
 		if (cFile.isFile()) {
 			println("");
-			println("--- .c cikti dosyasi: " + cFile + " (" + cFile.length() + " bayt) ---");
+			println("--- C Output File: " + cFile + " (" + cFile.length() + " bytes) ---");
 			try (BufferedReader reader =
 				Files.newBufferedReader(cFile.toPath(), StandardCharsets.UTF_8)) {
 				String line;
@@ -114,17 +115,16 @@ public class TestBatchAnalysis extends GhidraScript {
 					println(line);
 					count++;
 				}
-				println("... (ilk " + count + " satir gosterildi)");
+				println("... (first " + count + " lines displayed)");
 			}
 		}
 		else {
-			println("UYARI: .c dosyasi olusmadi!");
+			println("WARNING: .c output file was not created!");
 		}
 
-		// Onbellek gercekten yazildi mi?
 		File cacheFile = options.cacheFile;
 		println("");
-		println("Onbellek: " + cacheFile + " (" +
-			(cacheFile.isFile() ? cacheFile.length() + " bayt" : "YOK") + ")");
+		println("Cache: " + cacheFile + " (" +
+			(cacheFile.isFile() ? cacheFile.length() + " bytes" : "NOT FOUND") + ")");
 	}
 }
