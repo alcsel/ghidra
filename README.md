@@ -103,6 +103,65 @@ $env:GHIDRA_INSTALL_DIR = "C:\yol\ghidra_12.1.2_PUBLIC"
 Ayarlar'da *sormadan uygula* seçeneklerini işaretlerseniz analiz biter bitmez sonuçlar
 doğrudan programa yazılır (sonuç penceresi açılmaz, sadece özet gösterilir).
 
+## 3b. Tüm binary'yi analiz et — orijinal kaynağa yaklaşmak
+
+**Tools → DeepSeek AI → Tüm Fonksiyonları Analiz Et (Toplu)…**
+
+Bu mod, programdaki fonksiyonları **sırayla** DeepSeek'e gönderir; `FUN_00401040`
+gibi isimleri `create_and_show_main_window`, `uVar1` gibi değişkenleri `hinstance`
+gibi gerçekçi adlara çevirir ve yorumları yazar. Böylece decompile çıktısı
+orijinal C kaynağına belirgin biçimde yaklaşır.
+
+> **Gerçekçi beklenti:** Orijinal kaynak kodu birebir geri getirilemez — derleyici
+> sembol, tip ve isim bilgisini siler. Elde edilen şey, AI tarafından
+> **isimlendirilmiş ve yorumlanmış decompiler çıktısıdır**. `WinHelloCPP.exe`
+> üzerinde testte `InitInstance` fonksiyonu **`create_and_show_main_window`** olarak
+> adlandırıldı ve parametreleri **`hInstance` / `nCmdShow`** olarak belirlendi.
+
+Pencerede şu ayarlar var:
+
+| Ayar | Açıklama |
+|---|---|
+| **Hangi fonksiyonlar** | Tüm program / seçili adres aralığı / imleçteki fonksiyon |
+| **Sadece ismi çözülememiş (FUN_*)** | Açıkken yalnızca otomatik isimli fonksiyonlar işlenir. Bir kez isimlendirilen fonksiyonlar sonraki çalıştırmalarda **atlanır** — yani tekrar çalıştırmak kalanları işler. |
+| **Thunk/external atla** | Boş thunk'ları ve DLL import'larını atlar |
+| **En az / en fazla boyut** | Çok küçük ve çok büyük fonksiyonları eler |
+| **En fazla fonksiyon** | 0 = sınırsız. Ücret kontrolü için sınır koyun. |
+| **İstekler arası bekleme** | API'yi yormamak için ms cinsinden bekleme |
+| **Ne uygulanacak** | Fonksiyon adları / değişken adları / yorumlar — istediğinizi kapatabilirsiniz |
+| **Önbellek kullan** | Aynı fonksiyon ikinci kez API'ye gönderilmez (yarıda kalan iş kaldığı yerden sürer) |
+| **Zenginleştirilmiş .c yaz** | İşlenen fonksiyonları AI özeti + değişken eşleşmesi ile birlikte tek `.c` dosyasına yazar |
+
+Güvenlik önlemleri:
+
+- **Malİyet onayı:** 15'ten fazla fonksiyon seçilirse onay penceresi çıkar ve tahmini
+  token sayısı gösterilir.
+- **Tahmini gösterge:** Pencerede canlı olarak "Seçilen fonksiyon: N | tahmini ~X token" yazar.
+- **İptal edilebilir:** Durdurduğunuzda o ana kadarki değişiklikler ve önbellek korunur;
+  tekrar başlattığınızda kaldığı yerden devam eder.
+- **Geri alınabilir:** Her fonksiyon kendi transaction'ında yazılır; **Ctrl+Z** ile
+  fonksiyon fonksiyon geri alabilirsiniz.
+
+### Önbellek ve çıktı dosyaları
+
+| Dosya | İçerik |
+|---|---|
+| `<çıktı>.c` | AI özeti, imza, değişken eşleşmesi, belirsizlikler ve decompile kodu içeren kaynak benzeri çıktı. Sonda fonksiyon indeksi bulunur. |
+| `<çıktı>.c.cache.json` | Her fonksiyon için modelin ham JSON yanıtı + `applied` işareti. Aynı fonksiyon tekrar gönderilmez. |
+
+`.c` dosyası istemediyseniz önbellek `%USERPROFILE%\<program>.deepseek-cache.json`
+konumuna yazılır. Önbelleği silmek = sıfırdan analiz.
+
+### Ücret tahmini
+
+Fonksiyon başına kabaca **1.500–3.000 token** (fonksiyonun boyutuna göre).
+Örnek: 300 fonksiyon ≈ 0,5–1 milyon token. Küçük ikililerde birkaç sent,
+büyük ikililerde birkaç dolar. Bu yüzden:
+
+1. Önce **küçük bir aralıkta** deneyin (kapsam: *seçili aralık*, veya *en fazla fonksiyon: 10*).
+2. Sonucu `deepseek-reasoner` yerine **`deepseek-chat`** ile alın (belirgin biçimde ucuz).
+3. `Temperature` düşük (0.2) kalsın — isimlendirme kararlılığı için.
+
 ## 4. Ayarlar
 
 Ayarlar hem eklentinin kendi penceresinden hem de **Edit → Tool Options → DeepSeek AI**
@@ -194,16 +253,23 @@ DeepSeekGhidra\
 │   ├── DecompiledContext.java         Fonksiyon baglami (DTO)
 │   ├── Prompt.java                    Sistem/kullanici istemleri
 │   ├── AnalysisOutcome.java           JSON yanitini ayristirma + dogrulama
-│   ├── DeepSeekAnalyzeTask.java       Arka plan analiz gorevi
-│   ├── DeepSeekApplyTask.java         Degisiklikleri uygulayan gorev
+│   ├── OutcomeApplier.java            Onerileri programa uygulama (tek transaction)
+│   ├── DeepSeekAnalyzeTask.java       Tek fonksiyon analizi (arka plan gorevi)
+│   ├── DeepSeekApplyTask.java         Onaylanan degisiklikleri uygulayan gorev
 │   ├── DeepSeekResultDialog.java      Sonuc penceresi
-│   └── DeepSeekOptionsDialog.java     Ayar penceresi
+│   ├── DeepSeekOptionsDialog.java     Ayar penceresi
+│   ├── BatchAiOptions.java            Toplu analiz ayarlari
+│   ├── BatchAiEngine.java             Toplu analiz cekirdegi + .c export + onbellek
+│   ├── BatchAiTask.java               Toplu analiz Ghidra gorevi
+│   └── BatchAiDialog.java             Toplu analiz penceresi
 ├── src\main\resources\defaultTools\
 │   └── DeepSeekAI.tool                Ghidra arac sablonu (jar'a girer)
 └── ghidra_scripts\                    Teshis betikleri (Script Manager'da gorunur)
     ├── CheckDeepSeekInstall.java      Kurulum dogrulama
+    ├── CheckPluginRegistration.java   Plugin/paket kayit dogrulama
     ├── TestDeepSeekApi.java           API anahtari testi
-    └── DumpFunctionContext.java       Modele giden baglamin dokumu
+    ├── DumpFunctionContext.java       Modele giden baglamin dokumu
+    └── TestBatchAnalysis.java         Toplu analiz testi (2 fonksiyon)
 ```
 
 Oluşan paketin içeriği:

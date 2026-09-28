@@ -103,6 +103,22 @@ public class DeepSeekAIPlugin extends ProgramPlugin {
 		tool.addAction(analyzeAction);
 		actions.add(analyzeAction);
 
+		DockingAction batchAction =
+			new DockingAction("DeepSeek AI: Tum Fonksiyonlari Analiz Et", getName()) {
+				@Override
+				public void actionPerformed(ActionContext context) {
+					showBatchDialog();
+				}
+			};
+		batchAction.setMenuBarData(new MenuData(
+			new String[] { "Tools", MENU_ROOT, "Tum Fonksiyonlari Analiz Et (Toplu)..." }));
+		batchAction.setDescription("Programdaki fonksiyonlari sirayla DeepSeek ile analiz eder, " +
+			"isimlendirir ve istenirse .c dosyasi olarak disa aktarir.");
+		batchAction.setEnabled(true);
+		batchAction.markHelpUnnecessary();
+		tool.addAction(batchAction);
+		actions.add(batchAction);
+
 		DockingAction settingsAction = new DockingAction("DeepSeek AI: Ayarlar", getName()) {
 			@Override
 			public void actionPerformed(ActionContext context) {
@@ -200,6 +216,44 @@ public class DeepSeekAIPlugin extends ProgramPlugin {
 		return null;
 	}
 
+	/** Imlecin bulundugu fonksiyon (yoksa null). */
+	public Function getCurrentFunction() {
+		Program program = getCurrentProgram();
+		if (program == null) {
+			return null;
+		}
+		return resolveCurrentFunction(program);
+	}
+
+	// ------------------------------------------------------------------
+	// Toplu (batch) analiz
+	// ------------------------------------------------------------------
+
+	private void showBatchDialog() {
+		Program program = getCurrentProgram();
+		if (program == null) {
+			showInfo("Once bir program acmalisiniz.");
+			return;
+		}
+		if (!config.hasApiKey()) {
+			showInfo("DeepSeek API anahtari tanimli degil. Ayarlar penceresini doldurun.");
+			showSettings();
+			return;
+		}
+		new BatchAiDialog(this, program, config).setVisible(true);
+	}
+
+	/** Toplu analizi arka planda baslatir. */
+	public void startBatchAnalysis(Program program, BatchAiOptions options,
+			List<Function> functions) {
+		new TaskLauncher(new BatchAiTask(this, program, config, options, functions), null);
+	}
+
+	/** Toplu analiz bittiginde cagrilir (Swing thread'inde). */
+	public void batchFinished(Program program, BatchAiEngine.Result result) {
+		showText(TITLE + " - Toplu Analiz Sonucu", result.summary());
+	}
+
 	private void showSettings() {
 		if (optionsDialog != null && optionsDialog.isDisplayable()) {
 			optionsDialog.toFront();
@@ -284,8 +338,8 @@ public class DeepSeekAIPlugin extends ProgramPlugin {
 
 	/** Degisiklikler uygulandiktan sonra cagrilir. */
 	public void applyFinished(Program program, Function function,
-			DeepSeekApplyTask.ApplyReport report) {
-		showText(TITLE + " - Uygulama Sonucu", function.getName() + "\n\n" + report.summary());
+			OutcomeApplier.ApplyCounts counts) {
+		showText(TITLE + " - Uygulama Sonucu", function.getName() + "\n\n" + counts.summary());
 	}
 
 	/** Kullanicinin onayladigi degisiklikleri programa uygular. */
@@ -309,6 +363,12 @@ public class DeepSeekAIPlugin extends ProgramPlugin {
 
 	public void showInfo(String message) {
 		Msg.showInfo(this, resultDialog, TITLE, message);
+	}
+
+	/** Hata mesaji gosterir. */
+	public void showError(String message, Throwable error) {
+		Msg.showError(this, resultDialog, TITLE, message + "\n" +
+			(error == null ? "" : error.getMessage()), error);
 	}
 
 	// ------------------------------------------------------------------

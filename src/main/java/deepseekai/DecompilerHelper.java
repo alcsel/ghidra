@@ -49,43 +49,54 @@ public class DecompilerHelper {
 		try {
 			decompiler.openProgram(program);
 			decompiler.setSimplificationStyle("decompile");
-
-			DecompileResults results = decompiler.decompileFunction(function, 180, monitor);
-			if (results == null || !results.decompileCompleted()) {
-				String message = results == null ? "decompiler sonuc dondurmedi"
-						: results.getErrorMessage();
-				throw new IOException("Decompile edilemedi: " + message);
-			}
-
-			DecompiledContext context = new DecompiledContext();
-			context.function = function;
-
-			DecompiledFunction decompiled = results.getDecompiledFunction();
-			if (decompiled != null) {
-				context.rawCode = nullToEmpty(decompiled.getC());
-				context.signature = nullToEmpty(decompiled.getSignature()).trim();
-			}
-			if (context.signature.isEmpty()) {
-				context.signature = function.getName();
-			}
-
-			collectLines(context, results.getCCodeMarkup());
-			if (context.lines.isEmpty()) {
-				for (String line : context.rawCode.split("\n", -1)) {
-					context.lines.add(new DecompiledContext.CodeLine(line, null));
-				}
-			}
-
-			collectSymbols(context, results.getHighFunction());
-			context.calledFunctions.addAll(collectCalledFunctions(function, monitor));
-
-			context.annotatedCode = annotate(context, maxCodeChars);
-
-			return context;
+			return buildWith(decompiler, program, function, monitor, maxCodeChars);
 		}
 		finally {
 			decompiler.dispose();
 		}
+	}
+
+	/**
+	 * Toplu (batch) analiz icin: cagiran tarafin actigi bir {@link DecompInterface}
+	 * uzerinden decompile eder. Bu sayede yuzlerce fonksiyon icin yeni decompiler
+	 * sureci baslatilmaz.
+	 * <p>
+	 * DIKKAT: Bu metot decompiler'i KAPATMAZ; sahipligi cagirana aittir.
+	 */
+	public static DecompiledContext buildWith(DecompInterface decompiler, Program program,
+			Function function, TaskMonitor monitor, int maxCodeChars) throws Exception {
+
+		DecompileResults results = decompiler.decompileFunction(function, 180, monitor);
+		if (results == null || !results.decompileCompleted()) {
+			String message = results == null ? "decompiler sonuc dondurmedi"
+					: results.getErrorMessage();
+			throw new IOException("Decompile edilemedi: " + message);
+		}
+
+		DecompiledContext context = new DecompiledContext();
+		context.function = function;
+
+		DecompiledFunction decompiled = results.getDecompiledFunction();
+		if (decompiled != null) {
+			context.rawCode = nullToEmpty(decompiled.getC());
+			context.signature = nullToEmpty(decompiled.getSignature()).trim();
+		}
+		if (context.signature.isEmpty()) {
+			context.signature = function.getName();
+		}
+
+		collectLines(context, results.getCCodeMarkup());
+		if (context.lines.isEmpty()) {
+			for (String line : context.rawCode.split("\n", -1)) {
+				context.lines.add(new DecompiledContext.CodeLine(line, null));
+			}
+		}
+
+		context.highFunction = results.getHighFunction();
+		collectSymbols(context, context.highFunction);
+		context.calledFunctions.addAll(collectCalledFunctions(function, monitor));
+		context.annotatedCode = annotate(context, maxCodeChars);
+		return context;
 	}
 
 	/**

@@ -10,6 +10,7 @@ import java.util.List;
 
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Function;
+import ghidra.program.model.pcode.HighFunction;
 
 /**
  * Bir fonksiyonun decompile edilmis hali ve modele gonderilecek ek bilgiler.
@@ -57,6 +58,12 @@ public class DecompiledContext {
 	public Function function;
 	public String signature = "";
 	public String rawCode = "";
+	/**
+	 * Decompiler'in urettigi HighFunction. Degisken isimlendirme
+	 * ({@code HighFunctionDBUtil.updateDBVariable}) icin gereklidir.
+	 * Kisa omurludur; saklanmamalidir.
+	 */
+	public HighFunction highFunction;
 	/** Modelin gorecegi, satir baslarinda adres etiketi olan kod. */
 	public String annotatedCode = "";
 	public boolean codeTruncated;
