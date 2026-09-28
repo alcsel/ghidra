@@ -300,11 +300,25 @@ if (-not $NoInstall) {
     Write-Ok $targetDir
 
     Write-Step "Arac sablonu kullanici araclar klasorune kopyalaniyor..."
-    $settingsDir = Join-Path $env:USERPROFILE ".ghidra\.ghidra_${GhidraVersion}_${GhidraRelease}"
-    $userTools = Join-Path $settingsDir "tools"
-    New-Item -ItemType Directory -Path $userTools -Force | Out-Null
-    Copy-Item $toolFile (Join-Path $userTools "$ExtName.tool") -Force
-    Write-Ok (Join-Path $userTools "$ExtName.tool")
+    # Ghidra'nin kullanici ayar klasoru platforma gore degisir:
+    #   Windows : %APPDATA%\ghidra\ghidra_<surum>_<release>\tools
+    #   Linux/Mac: ~/.ghidra/.ghidra_<surum>_<release>/tools
+    # Ikisine de kopyalayalim; Ghidra hangisini kullaniyorsa bulur.
+    $toolDirs = @()
+    if ($env:APPDATA) {
+        $toolDirs += (Join-Path $env:APPDATA "ghidra\ghidra_${GhidraVersion}_${GhidraRelease}\tools")
+    }
+    $toolDirs += (Join-Path $env:USERPROFILE ".ghidra\.ghidra_${GhidraVersion}_${GhidraRelease}\tools")
+    foreach ($userTools in $toolDirs) {
+        try {
+            New-Item -ItemType Directory -Path $userTools -Force | Out-Null
+            Copy-Item $toolFile (Join-Path $userTools "$ExtName.tool") -Force
+            Write-Ok (Join-Path $userTools "$ExtName.tool")
+        }
+        catch {
+            Write-Warn2 "Kopyalanamadi: $userTools ($($_.Exception.Message))"
+        }
+    }
 
     Write-Host ""
     Write-Host "Kurulum tamamlandi. Ghidra'yi yeniden baslatin ve su adimlari izleyin:" -ForegroundColor Green
