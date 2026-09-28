@@ -73,10 +73,50 @@ public class DeepSeekConfig {
 	/** true ise API anahtari ortam degiskeninden gelmistir. */
 	public boolean apiKeyFromEnvironment = false;
 
+	/** true ise API anahtari yerel anahtar dosyasindan gelmistir. */
+	public boolean apiKeyFromFile = false;
+
+	/**
+	 * Yerel gizli anahtar dosyasi. Depoya hicbir zaman girmez
+	 * ({@code .gitignore} ile dislanir).
+	 */
+	public static final String KEY_FILE_NAME = ".deepseek_ghidra.properties";
+
+	/** Yerel anahtar dosyasinin tam yolu. */
+	public static java.io.File getKeyFile() {
+		return new java.io.File(System.getProperty("user.home", "."), KEY_FILE_NAME);
+	}
+
+	/** Yerel anahtar dosyasindan apiKey okur. Dosya yoksa/okunamazsa null doner. */
+	private static String readKeyFromFile() {
+		java.io.File file = getKeyFile();
+		if (!file.isFile()) {
+			return null;
+		}
+		java.util.Properties props = new java.util.Properties();
+		try (java.io.Reader reader = java.nio.file.Files.newBufferedReader(file.toPath(),
+			java.nio.charset.StandardCharsets.UTF_8)) {
+			props.load(reader);
+		}
+		catch (Exception e) {
+			Msg.warn(DeepSeekConfig.class,
+				"Yerel anahtar dosyasi okunamadi: " + file.getAbsolutePath(), e);
+			return null;
+		}
+		for (String keyName : new String[] { "apiKey", "api_key", "DEEPSEEK_API_KEY", "key" }) {
+			String value = props.getProperty(keyName);
+			if (!isBlank(value)) {
+				return value.trim();
+			}
+		}
+		return null;
+	}
+
 	/** Opsiyonlari Ghidra'ya kaydeder. */
 	public void register(ToolOptions options) {
 		registerSafely(options, OPT_API_KEY, DEFAULT_API_KEY,
-			"DeepSeek API anahtari (sk-...). DeepSeek API'sinden alinir.");
+			"DeepSeek API anahtari (sk-...). Bos birakilirsa DEEPSEEK_API_KEY ortam " +
+				"degiskeni ya da ~/.deepseek_ghidra.properties dosyasi kullanilir.");
 		registerSafely(options, OPT_BASE_URL, DEFAULT_BASE_URL,
 			"DeepSeek API sunucusu (orn. https://api.deepseek.com)");
 		registerSafely(options, OPT_MODEL, DEFAULT_MODEL,
@@ -124,14 +164,7 @@ public class DeepSeekConfig {
 		autoApplyRenames = options.getBoolean(OPT_AUTO_RENAMES, false);
 		autoApplyFunctionName = options.getBoolean(OPT_AUTO_FUNC_NAME, false);
 
-		apiKeyFromEnvironment = false;
-		if (isBlank(apiKey)) {
-			String env = System.getenv("DEEPSEEK_API_KEY");
-			if (!isBlank(env)) {
-				apiKey = env.trim();
-				apiKeyFromEnvironment = true;
-			}
-		}
+		resolveApiKeyFallback();
 
 		// Makul araliklara kirp
 		if (temperature < 0.0) {
@@ -151,6 +184,35 @@ public class DeepSeekConfig {
 		}
 	}
 
+	/**
+	 * Ghidra ayarlarini okumadan yalnizca API anahtarini cozumler.
+	 * Teshis betikleri ve komut satiri kullanimi icin.
+	 */
+	public void loadApiKeyOnly() {
+		apiKey = DEFAULT_API_KEY;
+		resolveApiKeyFallback();
+	}
+
+	/** Anahtar bos ise ortam degiskenini, sonra yerel anahtar dosyasini dener. */
+	private void resolveApiKeyFallback() {
+		apiKeyFromEnvironment = false;
+		apiKeyFromFile = false;
+		if (isBlank(apiKey)) {
+			String env = System.getenv("DEEPSEEK_API_KEY");
+			if (!isBlank(env)) {
+				apiKey = env.trim();
+				apiKeyFromEnvironment = true;
+			}
+		}
+		if (isBlank(apiKey)) {
+			String fromFile = readKeyFromFile();
+			if (!isBlank(fromFile)) {
+				apiKey = fromFile;
+				apiKeyFromFile = true;
+			}
+		}
+	}
+
 	/** Ayarlari Ghidra'ya yazar. Ortam degiskeninden gelen anahtar yazilmaz. */
 	public void save(ToolOptions options) {
 		options.setString(OPT_BASE_URL, baseUrl);
@@ -164,8 +226,9 @@ public class DeepSeekConfig {
 		options.setBoolean(OPT_AUTO_RENAMES, autoApplyRenames);
 		options.setBoolean(OPT_AUTO_FUNC_NAME, autoApplyFunctionName);
 
-		if (apiKeyFromEnvironment && !hasExplicitApiKey(options)) {
-			// Kullanici ortam degiskenini kullaniyor; opsiyonu kirletmeyelim.
+		if ((apiKeyFromEnvironment || apiKeyFromFile) && !hasExplicitApiKey(options)) {
+			// Kullanici ortam degiskenini / yerel dosyayi kullaniyor;
+			// anahtari Ghidra ayarlarina kopyalamayalim.
 			return;
 		}
 		options.setString(OPT_API_KEY, apiKey == null ? "" : apiKey);
@@ -182,6 +245,17 @@ public class DeepSeekConfig {
 
 	public boolean hasApiKey() {
 		return !isBlank(apiKey);
+	}
+
+	/** API anahtarinin hangi kaynaktan geldigini aciklar. */
+	public String apiKeySource() {
+		if (apiKeyFromEnvironment) {
+			return "DEEPSEEK_API_KEY ortam degiskeni";
+		}
+		if (apiKeyFromFile) {
+			return getKeyFile().getAbsolutePath();
+		}
+		return "Ghidra ayarlari (Edit > Tool Options > DeepSeek AI)";
 	}
 
 	public static boolean isBlank(String s) {

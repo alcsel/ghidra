@@ -124,9 +124,14 @@ Ayarlar hem eklentinin kendi penceresinden hem de **Edit → Tool Options → De
 
 Öncelik sırası:
 
-1. **`DEEPSEEK_API_KEY` ortam değişkeni** — tanımlıysa bu kullanılır ve diske hiç yazılmaz.
-2. **Ayarlar penceresi / Edit → Tool Options → DeepSeek AI** — girdiğiniz anahtar
+1. **Ayarlar penceresi / Edit → Tool Options → DeepSeek AI** — girdiğiniz anahtar
    Ghidra'nın tool options dosyasında saklanır (`%USERPROFILE%\.ghidra\.ghidra_<sürüm>\...`).
+2. **`DEEPSEEK_API_KEY` ortam değişkeni** — bu dosyaya hiç yazılmaz.
+3. **`%USERPROFILE%\.deepseek_ghidra.properties`** — yerel gizli anahtar dosyası:
+
+```properties
+apiKey=sk-xxxxxxxxxxxxxxxx
+```
 
 Ortam değişkenini kalıcı olarak tanımlamak:
 
