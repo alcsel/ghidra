@@ -1,0 +1,53 @@
+/* ###
+ * IP: GHIDRA
+ *
+ * DeepSeek AI - Ghidra Extension
+ * Analyzes decompiled functions using DeepSeek AI models.
+ */
+
+if (file("${rootProject.projectDir}/gradle/distributableGhidraExtension.gradle").exists()) {
+	apply from: "${rootProject.projectDir}/gradle/distributableGhidraExtension.gradle"
+	apply from: "${rootProject.projectDir}/gradle/javaProject.gradle"
+	apply plugin: 'eclipse'
+	eclipse.project.name = 'DeepSeekAI'
+
+	dependencies {
+		api project(':Base')
+		api project(':Decompiler')
+	}
+}
+else {
+	def ghidraInstallDir
+
+	if (System.env.GHIDRA_INSTALL_DIR) {
+		ghidraInstallDir = System.env.GHIDRA_INSTALL_DIR
+	}
+	else if (project.hasProperty("GHIDRA_INSTALL_DIR")) {
+		ghidraInstallDir = project.getProperty("GHIDRA_INSTALL_DIR")
+	}
+	else {
+		ghidraInstallDir = "<REPLACE>"
+	}
+
+	println "Ghidra installation directory: ${ghidraInstallDir}"
+
+	apply from: new File(ghidraInstallDir).getCanonicalPath() + "/support/buildExtension.gradle"
+
+	repositories {
+		mavenCentral()
+	}
+
+	dependencies {
+	}
+
+	buildExtension.exclude '.github/**'
+	buildExtension.exclude '.gitignore'
+	buildExtension.exclude '.gitattributes'
+	buildExtension.exclude 'build.ps1'
+
+	buildExtension {
+		from('src/main/resources/defaultTools/DeepSeekAI.tool') {
+			into project.name
+		}
+	}
+}
