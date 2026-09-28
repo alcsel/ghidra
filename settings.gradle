@@ -1,0 +1,4 @@
+/* ###
+ * DeepSeek AI - Ghidra Extension
+ */
+rootProject.name = 'DeepSeekAI'

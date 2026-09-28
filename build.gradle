@@ -1,0 +1,61 @@
+/* ###
+ * DeepSeek AI - Ghidra Extension
+ *
+ * Ghidra'nin standart eklenti derleme betigi ile derler.
+ *
+ * Kullanim (internet gerekir; Gradle dagitimi indirilir):
+ *
+ *   set GHIDRA_INSTALL_DIR=C:\yol\ghidra_12.1.2_PUBLIC
+ *   gradlew.bat -PGHIDRA_INSTALL_DIR=%GHIDRA_INSTALL_DIR% buildExtension
+ *
+ * Cikti: dist/ghidra_<surum>_<tarih>_DeepSeekAI.zip
+ *
+ * Not: Internet olmadan derlemek icin build.ps1 betigini kullanin.
+ */
+
+//----------------------START "DO NOT MODIFY" SECTION------------------------------
+def ghidraInstallDir
+
+if (System.env.GHIDRA_INSTALL_DIR) {
+	ghidraInstallDir = System.env.GHIDRA_INSTALL_DIR
+}
+else if (project.hasProperty("GHIDRA_INSTALL_DIR")) {
+	ghidraInstallDir = project.getProperty("GHIDRA_INSTALL_DIR")
+}
+else {
+	ghidraInstallDir = "<REPLACE>"
+}
+
+println "Ghidra kurulum dizini: ${ghidraInstallDir}"
+
+apply from: new File(ghidraInstallDir).getCanonicalPath() + "/support/buildExtension.gradle"
+//----------------------END "DO NOT MODIFY" SECTION-------------------------------
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	// Tum bagimliliklar Ghidra ile birlikte gelir (gson, java.net.http).
+	// Harici bir kutuphane gerekirse buraya eklenebilir.
+}
+
+// Dagitim arsivine girmemesi gereken gelistirici dosyalari
+// (gradlew/gradle/src/dist/build zaten Ghidra tarafindan varsayilan olarak haric tutulur)
+buildExtension.exclude '.github/**'
+buildExtension.exclude '.gitignore'
+buildExtension.exclude '.gitattributes'
+buildExtension.exclude 'build.ps1'
+buildExtension.exclude 'build.gradle'
+buildExtension.exclude 'settings.gradle'
+buildExtension.exclude 'gradlew'
+buildExtension.exclude 'gradlew.bat'
+buildExtension.exclude 'gradle/**'
+
+// Arac (.tool) sablonunu zip kokune de koy ki build.ps1 ile ayni paket olussun.
+// (Sablon zaten jar icinde defaultTools/ altinda bulunur.)
+buildExtension {
+	from('src/main/resources/defaultTools/DeepSeekAI.tool') {
+		into project.name
+	}
+}

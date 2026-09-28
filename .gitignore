@@ -1,0 +1,31 @@
+# Derleme ciktilari
+/build/
+/dist/
+/.gradle/
+*.log
+
+# Ghidra proje dosyalari
+*.gpr
+*.rep/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+nbproject/
+
+# Isletim sistemi
+Thumbs.db
+Desktop.ini
+desktop.ini
+.DS_Store
+
+# Yerel ayarlar / sirlar (API anahtari ASLA depoya girmemeli)
+secrets.properties
+*.local.properties
+.deepseek_ghidra.properties
