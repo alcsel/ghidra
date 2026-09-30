@@ -9,6 +9,11 @@ import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
+import java.awt.Toolkit;
+import java.awt.datatransfer.StringSelection;
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -18,9 +23,11 @@ import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JDialog;
+import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.JSplitPane;
 import javax.swing.JTabbedPane;
 import javax.swing.JTable;
 import javax.swing.JTextArea;
@@ -31,9 +38,10 @@ import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Program;
 
 /**
- * Dialog displaying analysis suggestions returned by DeepSeek.
+ * Dialog displaying analysis suggestions returned by AI.
  * <p>
- * The user can review the summary, variable renames, line comments, complex blocks,
+ * The user can review the clean handwritten C code (zero uVar artifacts),
+ * side-by-side comparison with original decompilation, summary, variable renames,
  * and select which modifications to apply before committing them to the program.
  */
 public class DeepSeekResultDialog extends JDialog {
@@ -83,50 +91,179 @@ public class DeepSeekResultDialog extends JDialog {
 		add(buildFooter(), BorderLayout.SOUTH);
 
 		updateSelectionLabel();
-		setSize(880, 600);
+		setSize(1020, 700);
 		setLocationRelativeTo(null);
 	}
 
 	private JTabbedPane buildTabs() {
 		JTabbedPane tabs = new JTabbedPane();
 
-		// 1. Summary
-		tabs.addTab("Summary", scrollable(textArea(outcome.summary, false)));
+		// 1. ✨ Clean C Code (Handwritten) - DEFAULT FIRST TAB
+		tabs.addTab("✨ Clean C Code (Handwritten)", buildCleanCodePanel());
 
-		// 2. Variable Renames
+		// 2. 🔄 Side-by-Side (Original vs Clean)
+		tabs.addTab("🔄 Side-by-Side View", buildSideBySidePanel());
+
+		// 3. Summary
+		tabs.addTab("Summary", scrollable(textArea(outcome.summary, false, true)));
+
+		// 4. Variable Renames
 		JTable renameTable = buildTable(renameModel);
 		tabs.addTab("Variable Renames (" + outcome.varRenames.size() + ")",
 			scrollable(renameTable));
 
-		// 3. Line Comments
+		// 5. Line Comments
 		JTable commentTable = buildTable(commentModel);
 		tabs.addTab("Line Comments (" + outcome.lineComments.size() + ")",
 			scrollable(commentTable));
 
-		// 4. Complex Blocks
+		// 6. Complex Blocks
 		tabs.addTab("Complex Blocks (" + outcome.hardParts.size() + ")",
-			scrollable(textArea(hardPartsText(), false)));
+			scrollable(textArea(hardPartsText(), false, true)));
 
-		// 5. Uncertainties
+		// 7. Uncertainties
 		tabs.addTab("Uncertainties (" + outcome.uncertainties.size() + ")",
-			scrollable(textArea(uncertaintiesText(), false)));
+			scrollable(textArea(uncertaintiesText(), false, true)));
 
-		// 6. Raw Response
-		tabs.addTab("Raw Response", scrollable(textArea(outcome.rawResponse, true)));
+		// 8. Raw Response
+		tabs.addTab("Raw Response", scrollable(textArea(outcome.rawResponse, true, false)));
 
 		return tabs;
+	}
+
+	private JPanel buildCleanCodePanel() {
+		JPanel panel = new JPanel(new BorderLayout());
+
+		// Top toolbar with actions and info badge
+		JPanel toolbar = new JPanel(new BorderLayout());
+		toolbar.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
+
+		JLabel label = new JLabel("✨ Reconstructed human-written C code (Zero uVar / machine artifacts)");
+		label.setFont(label.getFont().deriveFont(Font.BOLD));
+		toolbar.add(label, BorderLayout.WEST);
+
+		JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+		JButton copyBtn = new JButton("📋 Copy Clean C");
+		copyBtn.setToolTipText("Copy reconstructed clean C code to system clipboard");
+		copyBtn.addActionListener(e -> copyCleanCodeToClipboard(copyBtn));
+
+		JButton exportBtn = new JButton("💾 Export .c File");
+		exportBtn.setToolTipText("Save reconstructed clean C code to a .c source file");
+		exportBtn.addActionListener(e -> exportCleanCodeToFile());
+
+		actions.add(copyBtn);
+		actions.add(exportBtn);
+		toolbar.add(actions, BorderLayout.EAST);
+
+		panel.add(toolbar, BorderLayout.NORTH);
+
+		String cleanCode = outcome.getOrGenerateCleanCode(context);
+		JTextArea codeArea = textArea(cleanCode, true, false);
+		codeArea.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+		panel.add(new JScrollPane(codeArea), BorderLayout.CENTER);
+
+		return panel;
+	}
+
+	private JPanel buildSideBySidePanel() {
+		JPanel panel = new JPanel(new BorderLayout());
+
+		// Left: Original Ghidra Decompilation
+		JPanel left = new JPanel(new BorderLayout());
+		JLabel leftTitle = new JLabel("  Original Decompiled (Ghidra)");
+		leftTitle.setFont(leftTitle.getFont().deriveFont(Font.BOLD));
+		leftTitle.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
+		left.add(leftTitle, BorderLayout.NORTH);
+
+		String origCode = context.annotatedCode != null && !context.annotatedCode.isEmpty()
+				? context.annotatedCode
+				: context.rawCode;
+		JTextArea leftArea = textArea(origCode, true, false);
+		leftArea.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+		left.add(new JScrollPane(leftArea), BorderLayout.CENTER);
+
+		// Right: Clean Reconstructed Code
+		JPanel right = new JPanel(new BorderLayout());
+		JLabel rightTitle = new JLabel("  ✨ Clean Reconstructed (Handwritten)");
+		rightTitle.setFont(rightTitle.getFont().deriveFont(Font.BOLD));
+		rightTitle.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
+		right.add(rightTitle, BorderLayout.NORTH);
+
+		String cleanCode = outcome.getOrGenerateCleanCode(context);
+		JTextArea rightArea = textArea(cleanCode, true, false);
+		rightArea.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+		right.add(new JScrollPane(rightArea), BorderLayout.CENTER);
+
+		JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, left, right);
+		splitPane.setResizeWeight(0.5);
+		splitPane.setContinuousLayout(true);
+		panel.add(splitPane, BorderLayout.CENTER);
+
+		return panel;
+	}
+
+	private void copyCleanCodeToClipboard(JButton sourceButton) {
+		String code = outcome.getOrGenerateCleanCode(context);
+		if (code.isEmpty()) {
+			return;
+		}
+		try {
+			StringSelection selection = new StringSelection(code);
+			Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);
+			if (sourceButton != null) {
+				String originalText = sourceButton.getText();
+				sourceButton.setText("✓ Copied!");
+				javax.swing.Timer timer = new javax.swing.Timer(2000, e -> sourceButton.setText(originalText));
+				timer.setRepeats(false);
+				timer.start();
+			}
+		}
+		catch (Exception ex) {
+			plugin.showError("Could not copy code to clipboard: " + ex.getMessage(), ex);
+		}
+	}
+
+	private void exportCleanCodeToFile() {
+		String code = outcome.getOrGenerateCleanCode(context);
+		if (code.isEmpty()) {
+			return;
+		}
+		JFileChooser chooser = new JFileChooser();
+		chooser.setDialogTitle("Export Clean C Code");
+		String defaultName = (!outcome.functionName.isEmpty() ? outcome.functionName : function.getName()) + ".c";
+		chooser.setSelectedFile(new File(defaultName));
+		int result = chooser.showSaveDialog(this);
+		if (result == JFileChooser.APPROVE_OPTION) {
+			File file = chooser.getSelectedFile();
+			try {
+				Files.writeString(file.toPath(), code, StandardCharsets.UTF_8);
+				plugin.showInfo("Exported clean C code to:\n" + file.getAbsolutePath());
+			}
+			catch (Exception ex) {
+				plugin.showError("Failed to save file: " + ex.getMessage(), ex);
+			}
+		}
 	}
 
 	private JPanel buildHeader() {
 		JPanel panel = new JPanel();
 		panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-		panel.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+		panel.setBorder(BorderFactory.createEmptyBorder(10, 12, 6, 12));
 
+		JPanel topRow = new JPanel(new BorderLayout());
 		JLabel title = new JLabel(function.getName() + "   @ 0x" +
 			function.getEntryPoint().toString().replace(" ", ""));
 		title.setFont(title.getFont().deriveFont(Font.BOLD, title.getFont().getSize() + 2f));
-		title.setAlignmentX(LEFT_ALIGNMENT);
-		panel.add(title);
+		topRow.add(title, BorderLayout.WEST);
+
+		JPanel headerActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+		JButton quickCopyBtn = new JButton("📋 Copy Clean C");
+		quickCopyBtn.setToolTipText("Quickly copy clean handwritten C code to clipboard");
+		quickCopyBtn.addActionListener(e -> copyCleanCodeToClipboard(quickCopyBtn));
+		headerActions.add(quickCopyBtn);
+		topRow.add(headerActions, BorderLayout.EAST);
+		topRow.setAlignmentX(LEFT_ALIGNMENT);
+		panel.add(topRow);
 
 		JLabel detail = new JLabel("Signature: " + context.signature + "  |  Model: " + outcome.getSourceInfo());
 		detail.setAlignmentX(LEFT_ALIGNMENT);
@@ -164,18 +301,21 @@ public class DeepSeekResultDialog extends JDialog {
 		outer.add(checks, BorderLayout.NORTH);
 
 		JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
-		JButton applySelected = new JButton("Apply Selected");
+		JButton applySelected = new JButton("Apply Selected to Ghidra");
 		applySelected.addActionListener(e -> apply(true));
 		JButton selectAll = new JButton("Select All");
 		selectAll.addActionListener(e -> setAll(true));
 		JButton selectNone = new JButton("Deselect All");
 		selectNone.addActionListener(e -> setAll(false));
+		JButton copyBtn = new JButton("📋 Copy Clean C");
+		copyBtn.addActionListener(e -> copyCleanCodeToClipboard(copyBtn));
 		JButton close = new JButton("Close");
 		close.addActionListener(e -> dispose());
 
 		buttons.add(applySelected);
 		buttons.add(selectAll);
 		buttons.add(selectNone);
+		buttons.add(copyBtn);
 		buttons.add(close);
 		buttons.add(selectionLabel);
 
@@ -183,14 +323,14 @@ public class DeepSeekResultDialog extends JDialog {
 		return outer;
 	}
 
-	private JTextArea textArea(String text, boolean monospaced) {
+	private JTextArea textArea(String text, boolean monospaced, boolean wrap) {
 		JTextArea area = new JTextArea(text == null ? "" : text);
 		area.setEditable(false);
-		area.setLineWrap(!monospaced);
-		area.setWrapStyleWord(!monospaced);
+		area.setLineWrap(wrap);
+		area.setWrapStyleWord(wrap);
 		area.setCaretPosition(0);
 		if (monospaced) {
-			area.setFont(new Font(Font.MONOSPACED, Font.PLAIN, area.getFont().getSize()));
+			area.setFont(new Font(Font.MONOSPACED, Font.PLAIN, area.getFont().getSize() + 1));
 		}
 		return area;
 	}

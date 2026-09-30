@@ -32,6 +32,8 @@ A state-of-the-art Ghidra extension integrating major Large Language Model (LLM)
 
 | Capability | Description |
 | :--- | :--- |
+| **✨ Clean Handwritten C Code** | Reconstructs raw decompilation into human-written C with **ZERO compiler artifacts** (uVar, param_, local_, raw casts). Features 1-click clipboard copy and .c export. |
+| **🔄 Side-by-Side Diff View** | Split comparison pane displaying original Ghidra pseudocode vs. reconstructed clean handwritten code. |
 | **Multi-Provider Hub** | Switch between OpenAI, Claude, Gemini, DeepSeek, Ollama, Groq, OpenRouter with a single click. |
 | **Dynamic Model Discovery** | Click **Fetch Models 🔄** in Settings to query Ollama locally or cloud APIs for available models. |
 | **Per-Provider Credential Memory** | Switching providers preserves your API key, custom base URL, and selected model for each provider. |
