@@ -1,13 +1,30 @@
-# DeepSeek AI - Ghidra Extension
+# Ghidra AI Extension - Multi-Provider AI Assistant (v2.0)
 
 [![Ghidra](https://img.shields.io/badge/Ghidra-12.1.2%2B-blue.svg)](https://ghidra-sre.org/)
 [![Java](https://img.shields.io/badge/Java-21%2B-orange.svg)](https://adoptium.net/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
-[![DeepSeek](https://img.shields.io/badge/API-DeepSeek-blueviolet.svg)](https://platform.deepseek.com)
+[![Multi-AI](https://img.shields.io/badge/AI-OpenAI%20%7C%20Claude%20%7C%20Gemini%20%7C%20DeepSeek%20%7C%20Ollama-blueviolet.svg)](https://github.com/ghidra-ai)
 
-Ghidra extension integrating **DeepSeek API** (`deepseek-chat` and `deepseek-reasoner`) directly into the Ghidra decompiler.
+A state-of-the-art Ghidra extension integrating major Large Language Model (LLM) providers directly into Ghidra's decompiler. Analyze binary functions, deobfuscate logic, rename variables, generate comments, and perform batch reverse engineering using your choice of cloud AI or 100% offline local models.
 
-*For Turkish documentation, see [README_TR.md](README_TR.md).*
+*Türkçe dokümantasyon için [README_TR.md](README_TR.md) dosyasına bakınız.*
+
+---
+
+### Supported AI Providers & Models
+
+| Provider | Supported Models | Protocol | Key Required? | Environment Variable | Best Use Case |
+| :--- | :--- | :--- | :---: | :--- | :--- |
+| **OpenAI** | `gpt-4o`, `gpt-4o-mini`, `o1`, `o3-mini`, `gpt-4.5` | OpenAI Chat | Yes | `OPENAI_API_KEY` | General reverse engineering, complex algorithm analysis |
+| **Anthropic Claude** | `claude-3-7-sonnet-20250219`, `claude-3-5-sonnet`, `claude-3-5-haiku` | Anthropic Messages | Yes | `ANTHROPIC_API_KEY` | Deep code reasoning, hybrid thinking, large context functions |
+| **Google Gemini** | `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.0-flash` | OpenAI-compatible | Yes | `GEMINI_API_KEY`, `GOOGLE_API_KEY` | High speed, large binary context, economical analysis |
+| **DeepSeek** | `deepseek-chat` (V3), `deepseek-reasoner` (R1) | OpenAI Chat | Yes | `DEEPSEEK_API_KEY` | High-accuracy reverse engineering at fraction of cost |
+| **Ollama** *(Local / Offline)* | `qwen2.5-coder:32b`, `llama3.3:70b`, `deepseek-r1:14b`, `codellama` | OpenAI Chat | **No (Free/Offline)** | `OLLAMA_API_KEY` *(optional)* | **100% confidential, air-gapped reverse engineering (zero data leakage)** |
+| **Groq** | `llama-3.3-70b-versatile`, `deepseek-r1-distill-llama-70b` | OpenAI Chat | Yes | `GROQ_API_KEY` | Ultra-fast inference (hundreds of tokens/second) |
+| **OpenRouter** | `anthropic/claude-3.7-sonnet`, `deepseek/deepseek-r1`, `openai/gpt-4o` | OpenAI Chat | Yes | `OPENROUTER_API_KEY` | Single API key for 200+ models from all top AI labs |
+| **Mistral AI** | `codestral-latest`, `mistral-large-latest` | OpenAI Chat | Yes | `MISTRAL_API_KEY` | Fine-tuned code reasoning models |
+| **xAI** | `grok-2`, `grok-2-mini`, `grok-beta` | OpenAI Chat | Yes | `XAI_API_KEY` | Grok reasoning models |
+| **Custom Endpoint** | `local-model`, `custom-model` | OpenAI Chat | Optional | `CUSTOM_API_KEY`, `AI_API_KEY` | Private LM Studio, vLLM, TextGen, or Azure OpenAI servers |
 
 ---
 
@@ -15,14 +32,17 @@ Ghidra extension integrating **DeepSeek API** (`deepseek-chat` and `deepseek-rea
 
 | Capability | Description |
 | :--- | :--- |
-| **Function Explanation** | Provides detailed natural-language explanations of decompiled logic and algorithms. |
+| **Multi-Provider Hub** | Switch between OpenAI, Claude, Gemini, DeepSeek, Ollama, Groq, OpenRouter with a single click. |
+| **Dynamic Model Discovery** | Click **Fetch Models 🔄** in Settings to query Ollama locally or cloud APIs for available models. |
+| **Per-Provider Credential Memory** | Switching providers preserves your API key, custom base URL, and selected model for each provider. |
+| **Function Explanation** | Provides detailed natural-language explanations of decompiled algorithms and intent. |
 | **Inline Comments** | Detects complex or obfuscated expressions and suggests technical comments mapped to code addresses. |
-| **Variable Renaming** | Replaces compiler artifacts (`uVar1`, `param_1`, `iVar3`) with meaningful semantic names (`packet_len`, `buffer_ptr`). |
+| **Semantic Variable Renaming** | Replaces compiler artifacts (`uVar1`, `param_1`, `iVar3`) with meaningful semantic names (`packet_len`, `buffer_ptr`). |
 | **Function Renaming** | Suggests descriptive function names and structured block comments for entry points. |
 | **Uncertainty Audit** | Outlines ambiguous areas in a dedicated tab without guessing or hallucinating. |
-| **Interactive Review** | All suggestions are reviewed in an interactive dialog before committing to the program. |
+| **Interactive Review Dialog** | Review, filter, and double-click addresses before committing changes to the database. |
 | **Batch Analysis** | Iterates over entire binaries, applies naming/comments, and exports enriched C pseudocode. |
-| **Zero Dependencies** | Built using Ghidra's embedded libraries (`java.net.http`, `Gson`). No external jar runtime dependencies. |
+| **Zero External Dependencies** | Built using Ghidra's embedded libraries (`java.net.http`, `Gson`). No external jar dependencies required. |
 
 ---
 
@@ -30,7 +50,7 @@ Ghidra extension integrating **DeepSeek API** (`deepseek-chat` and `deepseek-rea
 
 - **Ghidra**: `12.1.2` (or `11.x`+)
 - **JDK**: `21+` (e.g. Eclipse Adoptium Temurin 21, Microsoft OpenJDK 21)
-- **DeepSeek API Key**: `sk-...` from [platform.deepseek.com](https://platform.deepseek.com)
+- **AI Credentials**: API key from your chosen provider, or local **Ollama** instance.
 
 ---
 
@@ -44,7 +64,7 @@ No Gradle installation or internet connection required. Compiles directly agains
 powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
-If Ghidra is in a non-standard directory, supply the path explicitly:
+If Ghidra is in a custom directory, supply the path explicitly:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build.ps1 -GhidraDir "C:\Tools\ghidra_12.1.2_PUBLIC"
@@ -52,251 +72,142 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1 -GhidraDir "C:\Tools\ghidra
 
 What the script does:
 1. Compiles sources with `javac` against Ghidra framework jars.
-2. Derives the `DeepSeekAI.tool` template from Ghidra's `CodeBrowser.tool` with `deepseekai.DeepSeekAIPlugin` included.
+2. Derives the tool template from Ghidra's `CodeBrowser.tool` with `deepseekai.DeepSeekAIPlugin` included.
 3. Produces a distribution zip under `dist/ghidra_<version>_<date>_DeepSeekAI.zip`.
 4. Copies the staged extension into `Ghidra/Extensions/DeepSeekAI` and installs tool templates to the user profile.
 
-### Method B - Gradle (Standard Build)
+### Method B - Manual ZIP Installation
 
-Requires internet access to download the Gradle wrapper:
+1. In Ghidra: `File > Install Extensions...`
+2. Click the `+` (green plus) icon in the top right.
+3. Select `dist/ghidra_12.1.2_PUBLIC_YYYYMMDD_DeepSeekAI.zip`.
+4. Restart Ghidra.
 
-```bash
-# Set your Ghidra installation path
-export GHIDRA_INSTALL_DIR="/path/to/ghidra_12.1.2_PUBLIC"
+---
 
-# Build the extension archive
-./gradlew buildExtension
+## 3. Configuration & API Keys
+
+### Option A - Interactive Settings Dialog
+
+1. Open Ghidra CodeBrowser.
+2. Navigate to `Tools > AI Assistant > Settings (Providers & Keys)...`
+3. Select your desired AI provider from the dropdown.
+4. Enter your API key (or click `Get Key ↗` to open the provider console in browser).
+5. (Optional) For Ollama or OpenAI, click `Fetch Models 🔄` to automatically load available models.
+6. Click `Test Connection` to verify connectivity, latency, and credentials.
+7. Click `Save & Apply`.
+
+### Option B - Environment Variables
+
+The extension automatically reads provider-specific environment variables:
+
+| Provider | Environment Variable |
+| :--- | :--- |
+| **OpenAI** | `OPENAI_API_KEY` |
+| **Anthropic Claude** | `ANTHROPIC_API_KEY` |
+| **Google Gemini** | `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
+| **DeepSeek** | `DEEPSEEK_API_KEY` |
+| **Groq** | `GROQ_API_KEY` |
+| **OpenRouter** | `OPENROUTER_API_KEY` |
+| **Mistral** | `MISTRAL_API_KEY` |
+| **xAI Grok** | `XAI_API_KEY` |
+| **Custom** | `CUSTOM_API_KEY` or `AI_API_KEY` |
+
+Windows PowerShell:
+```powershell
+[System.Environment]::SetEnvironmentVariable("OPENAI_API_KEY", "sk-...", "User")
+[System.Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", "sk-ant-...", "User")
+[System.Environment]::SetEnvironmentVariable("DEEPSEEK_API_KEY", "sk-...", "User")
 ```
 
-On Windows:
-```cmd
-set GHIDRA_INSTALL_DIR=C:\path\to\ghidra_12.1.2_PUBLIC
-gradlew.bat -PGHIDRA_INSTALL_DIR=%GHIDRA_INSTALL_DIR% buildExtension
+### Option C - Local Properties File
+
+Create `~/.ghidra_ai.properties` (or `~/.deepseek_ghidra.properties`) in your user home directory:
+
+```properties
+# Active provider: OPENAI, ANTHROPIC, GEMINI, DEEPSEEK, OLLAMA, GROQ, OPENROUTER, MISTRAL, XAI
+provider=OPENAI
+
+# Per-provider API keys
+openai.apiKey=sk-...
+anthropic.apiKey=sk-ant-...
+gemini.apiKey=AIzaSy...
+deepseek.apiKey=sk-...
+groq.apiKey=gsk_...
+openrouter.apiKey=sk-or-...
+mistral.apiKey=...
+xai.apiKey=...
 ```
 
-Output archive is generated in: `dist/ghidra_<version>_<date>_DeepSeekAI.zip`.
-
-### Method C - Ghidra UI (Manual Archive Install)
-
-1. Launch Ghidra.
-2. Navigate to **File > Install Extensions...**
-3. Click the green **`+`** icon in the top right.
-4. Select the generated `dist/ghidra_*_DeepSeekAI.zip` file.
-5. Check the box next to **DeepSeekAI**.
-6. Restart Ghidra.
-
-### Post-Installation Verification
-
-1. Launch Ghidra and open a project.
-2. Double-click the **DeepSeekAI** tool in the Project Manager Tool Chest (or open standard **CodeBrowser**).
-3. Verify that the **Tools > DeepSeek AI** menu appears.
-   - If missing: **File > Configure... > Configure Plugins > search 'DeepSeek' > enable DeepSeekAI**.
-
 ---
 
-## 3. Usage
+## 4. Usage
 
-### 3.1 Single Function Analysis
+### 4.1 Single Function Analysis
 
-1. Open any binary in CodeBrowser / DeepSeekAI tool.
-2. Wait for auto-analysis to finish.
-3. Position your cursor inside any decompiled function in the **Decompiler** or **Listing** window.
-4. Run:
-   - **Tools > DeepSeek AI > Analyze Function**
-5. A modal dialog will present:
-   - **Summary Tab**: Complete algorithmic summary of the function.
-   - **Variable Renames Tab**: Checkbox list of suggested variable renames with old name, new name, type, and confidence score.
-   - **Line Comments Tab**: Proposed address-mapped inline comments.
-   - **Complex Blocks Tab**: Sections flagged as tricky or important.
-   - **Uncertainties Tab**: Points the AI is unsure about.
-   - **Raw Response Tab**: Unmodified model JSON output.
-6. Check or uncheck items as desired, then click **Apply Selected**. Changes are committed in a single undoable transaction (`Ctrl+Z` to undo).
+1. Place your cursor inside any decompiled function in the Decompiler or Listing window.
+2. Navigate to `Tools > AI Assistant > Analyze Function` (or right-click menu).
+3. The AI reviews the pseudocode, symbols, and calls.
+4. An interactive review dialog will open:
+   - **Summary Tab**: Natural language explanation of the function.
+   - **Variable Renames Tab**: Suggested variable names, types, reasons, and confidence.
+   - **Line Comments Tab**: Suggested technical comments mapped to specific instruction addresses.
+   - **Complex Blocks Tab**: Identification of tricky algorithms, crypto, or obfuscation.
+   - **Uncertainties Tab**: Areas where the AI recommends human verification.
+5. Check or uncheck items, then click **Apply Confirmed Changes** to commit them atomically.
 
-### 3.2 Auto-Apply Shortcut
+### 4.2 Quick Provider Switching
 
-If you prefer applying results automatically without the review dialog, configure:
-- **Tools > DeepSeek AI > Settings (API Key)...**
-- Check:
-  - *Auto-apply comments without prompting*
-  - *Auto-apply variable renames without prompting*
-  - *Auto-apply function name without prompting*
+Need to compare GPT-4o with Claude 3.7 or local Ollama?
+- Click `Tools > AI Assistant > Quick Switch Provider / Model...`
+- Select the new provider from the dialog — credentials and models are switched instantly!
 
----
+### 4.3 100% Offline Reverse Engineering with Ollama
 
-## 4. Batch Analysis - Whole Binary Processing
-
-Batch mode sequentially analyzes functions in a program, applies AI-suggested renames, adds inline technical comments, and exports enriched C pseudocode.
-
-To launch:
-- **Tools > DeepSeek AI > Batch Analyze Functions...**
-
-### Scope & Filter Options:
-- **All functions in program**: Full binary sweep.
-- **Functions in current selection**: Targeted block.
-- **Only current function**: Single function batch runner.
-- **Only undefined function names (`FUN_xxxx`, `sub_xxxx`)**: Skips functions already named.
-- **Skip external and thunk functions**: Focuses on actual application logic.
-- **Min / max function size (bytes)**: Filters out tiny stubs or giant functions.
-- **Max functions to process**: Limits token usage per run (0 = unlimited).
-- **Delay between requests**: Paces API requests to respect rate limits.
-
-### Caching System:
-- Automatically maintains `*.cache.json` in the user home directory.
-- Avoids redundant API calls when re-running analysis on identical functions.
-
-### Enriched C Source Export:
-- Generates `_ai_decompiled.c` containing:
-  - Header with metadata (program, language, model, timestamp).
-  - Decompiled functions with AI summaries, signatures, and variable mapping comments.
-  - Complete alphabetical function index at the bottom.
-
----
-
-## 5. Configuration & Key Management
-
-Access preferences via **Tools > DeepSeek AI > Settings (API Key)...** or **Edit > Tool Options > DeepSeek AI**.
-
-| Setting | Default | Description |
-| :--- | :--- | :--- |
-| `API Key` | `""` | DeepSeek API key (`sk-...`). |
-| `Base URL` | `https://api.deepseek.com` | API endpoint (supports local OpenAI-compatible proxies). |
-| `Model` | `deepseek-chat` | Choose `deepseek-chat` (fast) or `deepseek-reasoner` (deep reasoning). |
-| `Temperature` | `0.2` | Controls randomness (lower is more deterministic). |
-| `Max Tokens` | `8192` | Maximum token limit for completions. |
-| `Timeout` | `180` | Request timeout in seconds. |
-| `Response Language` | `English` | Language for AI explanations and comments. |
-| `Max Code Characters` | `24000` | Decompiled code length cap sent to the model. |
-
-### Where is the API Key Stored?
-
-To maintain security and prevent accidental commits, keys are resolved in this priority order:
-
-1. **Environment Variable**: `DEEPSEEK_API_KEY`
+For air-gapped environments or proprietary firmware where code cannot leave your machine:
+1. Install [Ollama](https://ollama.com/) and run:
    ```bash
-   # Windows PowerShell
-   [System.Environment]::SetEnvironmentVariable("DEEPSEEK_API_KEY", "sk-your-key", "User")
-   
-   # Linux/macOS
-   export DEEPSEEK_API_KEY="sk-your-key"
+   ollama run qwen2.5-coder:32b
+   # or
+   ollama run deepseek-r1:14b
    ```
-2. **Local Properties File**: `~/.deepseek_ghidra.properties`
-   Create this file in your user home directory:
-   ```properties
-   apiKey=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-   ```
-3. **Ghidra Settings GUI**: `Edit > Tool Options > DeepSeek AI`.
+2. In Ghidra: `Tools > AI Assistant > Settings (Providers & Keys)...`
+3. Select **Ollama (Local / Offline RE)**.
+4. Base URL defaults to `http://localhost:11434/v1`. No API key required!
+5. Click `Fetch Models 🔄` to automatically select your installed model.
+6. Click `Test Connection` and `Save & Apply`.
+
+### 4.4 Batch Analysis
+
+Analyze entire binaries or selected function sets sequentially:
+1. `Tools > AI Assistant > Batch Analyze Functions...`
+2. Configure scope (All functions, Selection, or Current).
+3. Filter out library/thunk functions or set size bounds.
+4. Enable auto-renaming, comments, caching, and enriched `.c` pseudocode export.
+5. Click **Start Batch Analysis**.
 
 ---
 
-## 6. How It Works (Pipeline)
+## 5. Diagnostic Scripts
 
-```
-[ Cursor in Function ]
-          │
-          ▼
-[ Ghidra Decompiler AST ]
-  ├── C Pseudocode Extraction
-  ├── Clang Node Token Walk (Address prefix tags [0x...])
-  └── HighFunction Symbol Map (Parameters & Local variables)
-          │
-          ▼
-[ DeepSeek API Client ]
-  ├── System Prompt (Reverse Engineering persona & strict JSON schema)
-  └── User Prompt (Context, symbols, annotated pseudocode)
-          │
-          ▼
-[ AnalysisOutcome Parser ]
-  ├── JSON extraction & validation
-  ├── Address verification in active program memory
-  └── Identifier validation (C keywords & naming sanity)
-          │
-          ▼
-[ OutcomeApplier ]
-  ├── HighFunctionDBUtil.updateDBVariable (Variables)
-  ├── Listing.setComment PRE (Line comments)
-  ├── Listing.setComment PLATE (Function comment)
-  └── Function.setName (Function renaming)
-          │
-          ▼
-[ Atomic Transaction Commit ]
-```
-
----
-
-## 7. Diagnostic Scripts
-
-Located in `ghidra_scripts/` and accessible from **Window > Script Manager**:
+Included in `ghidra_scripts/`:
 
 | Script | Purpose |
 | :--- | :--- |
-| `CheckDeepSeekInstall.java` | Verifies classpath, dependencies (Gson, HttpClient), and tool template registration. |
-| `CheckPluginRegistration.java` | Inspects tool configurations and active plugin manager state. |
-| `DumpFunctionContext.java` | Dumps the exact prompt, annotated lines, and symbols prepared for the model (dry-run). |
-| `TestBatchAnalysis.java` | Tests batch pipeline on 2 sample functions with dry-run or live API test (`api` argument). |
-| `TestDeepSeekApi.java` | Tests connectivity and credentials with a 30-token sanity probe. |
+| `CheckDeepSeekInstall.java` | Verifies installation, dependencies, and all 10 provider integrations. |
+| `TestAiApi.java` | Tests live connectivity and latency for any AI provider in GUI or headless mode. |
+| `TestBatchAnalysis.java` | Tests batch function selection and execution from script manager. |
+| `CheckPluginRegistration.java` | Diagnoses plugin registration status in active tool. |
 
----
-
-## 8. Project Structure
-
-```
-DeepSeekGhidra/
-├── .github/
-│   └── workflows/
-│       └── build.yml               # GitHub Actions CI/CD release workflow
-├── ghidra_scripts/                 # Diagnostic and verification scripts
-│   ├── CheckDeepSeekInstall.java
-│   ├── CheckPluginRegistration.java
-│   ├── DumpFunctionContext.java
-│   ├── TestBatchAnalysis.java
-│   └── TestDeepSeekApi.java
-├── gradle/wrapper/                 # Gradle wrapper binaries
-├── src/main/java/deepseekai/       # Core extension source code
-│   ├── AnalysisOutcome.java        # Structured response model & JSON parser
-│   ├── BatchAiDialog.java          # Batch analysis setup dialog
-│   ├── BatchAiEngine.java          # Batch execution & C exporter engine
-│   ├── BatchAiOptions.java         # Batch configuration & scope filters
-│   ├── BatchAiTask.java            # Background task for batch execution
-│   ├── DecompiledContext.java      # Context container for code & symbols
-│   ├── DecompilerHelper.java       # AST token tree walker & decompilation helpers
-│   ├── DeepSeekAIPlugin.java       # Ghidra ProgramPlugin entry point & menu actions
-│   ├── DeepSeekAnalyzeTask.java    # Single function background worker
-│   ├── DeepSeekApplyTask.java      # Modification applier task
-│   ├── DeepSeekClient.java         # HttpClient client for DeepSeek API
-│   ├── DeepSeekConfig.java         # Options registration & key resolver
-│   ├── DeepSeekOptionsDialog.java  # Preferences dialog & connection probe
-│   ├── DeepSeekResultDialog.java   # Suggestions review dialog
-│   ├── OutcomeApplier.java         # Transactional database applier
-│   └── Prompt.java                 # System & user prompt templates
-├── src/main/resources/
-│   └── defaultTools/
-│       └── DeepSeekAI.tool         # Pre-configured tool template
-├── .gitattributes                  # EOL normalization rules
-├── .gitignore                      # Git exclusion rules
-├── build.gradle                    # Gradle build definition
-├── build.ps1                       # Offline PowerShell build script
-├── extension.properties            # Ghidra extension manifest
-├── LICENSE                         # Apache 2.0 License
-├── Module.manifest                 # Module manifest
-├── README.md                       # English documentation
-└── README_TR.md                    # Turkish documentation
+Run via Ghidra Headless Analyzer:
+```powershell
+analyzeHeadless.bat C:\Temp TempProj -postScript TestAiApi.java openai gpt-4o sk-...
+analyzeHeadless.bat C:\Temp TempProj -postScript TestAiApi.java anthropic claude-3-7-sonnet-20250219 sk-ant-...
+analyzeHeadless.bat C:\Temp TempProj -postScript TestAiApi.java ollama qwen2.5-coder:32b
 ```
 
 ---
 
-## 9. GitHub CI/CD & Releases
-
-The project includes an automated GitHub Actions workflow (`.github/workflows/build.yml`):
-- Runs automated Gradle builds on every `push` and `pull_request`.
-- Automatically publishes extension zip archives to **GitHub Releases** whenever a release tag is pushed:
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
----
-
-## 10. License
+## 6. License
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.

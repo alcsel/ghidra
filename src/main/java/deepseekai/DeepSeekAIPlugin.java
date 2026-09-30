@@ -1,8 +1,9 @@
 /* ###
- * DeepSeek AI - Ghidra Extension
+ * Ghidra AI Extension
  *
- * Analyzes decompiled code using the DeepSeek API, comments on complex logic,
- * and renames variables and functions.
+ * Multi-Provider AI Assistant for Ghidra.
+ * Analyzes decompiled code using DeepSeek, OpenAI, Claude, Gemini, Ollama,
+ * Groq, OpenRouter, Mistral, xAI & Custom models.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +18,7 @@ import java.awt.Dimension;
 import java.util.ArrayList;
 import java.util.List;
 
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
@@ -37,26 +39,30 @@ import ghidra.util.Msg;
 import ghidra.util.task.TaskLauncher;
 
 /**
- * Main plugin class for DeepSeek AI extension.
+ * Main plugin class for the Ghidra AI Assistant extension.
  * <p>
- * Decompiles the selected function, queries the DeepSeek API, and presents
- * suggestions (explanation, comments, variable renames) for user approval.
+ * Decompiles the selected function, queries the configured AI provider
+ * (OpenAI, Claude, Gemini, DeepSeek, Ollama, Groq, OpenRouter, Mistral, xAI, Custom),
+ * and presents structured suggestions (explanation, comments, variable renames)
+ * for user approval before applying changes to the database.
  */
 //@formatter:off
 @PluginInfo(
 	status = PluginStatus.STABLE,
 	packageName = "Ghidra Core",
 	category = PluginCategoryNames.ANALYSIS,
-	shortDescription = "Analyzes decompiled code with DeepSeek AI",
-	description = "Analyzes the selected function via the DeepSeek API to explain logic, " +
-		"add comments to complex blocks, and suggest meaningful names for variables. " +
-		"Suggestions are presented for review before applying."
+	shortDescription = "Multi-Provider AI Decompiler Assistant (OpenAI, Claude, Gemini, DeepSeek, Ollama...)",
+	description = "Analyzes decompiled functions using major AI models (DeepSeek, OpenAI GPT-4o/o1/o3, " +
+		"Anthropic Claude 3.7/3.5, Google Gemini 2.5, Ollama offline local models, Groq, OpenRouter, " +
+		"Mistral Codestral, xAI Grok). Explains complex algorithms, generates inline comments, " +
+		"and suggests meaningful variable and function renames."
 )
 //@formatter:on
 public class DeepSeekAIPlugin extends ProgramPlugin {
 
-	private static final String TITLE = "DeepSeek AI";
-	private static final String MENU_ROOT = "DeepSeek AI";
+	private static final String TITLE = "AI Code Assistant";
+	private static final String MENU_ROOT = "AI Assistant";
+	private static final String MENU_LEGACY = "DeepSeek AI";
 
 	private ToolOptions options;
 	private DeepSeekConfig config;
@@ -86,79 +92,102 @@ public class DeepSeekAIPlugin extends ProgramPlugin {
 	}
 
 	private void createActions() {
-		DockingAction analyzeAction = new DockingAction("DeepSeek AI: Analyze Function",
-			getName()) {
+		// 1) Analyze Function
+		DockingAction analyzeAction = new DockingAction("AI Assistant: Analyze Function", getName()) {
 			@Override
 			public void actionPerformed(ActionContext context) {
 				analyzeCurrentFunction();
 			}
 		};
-		analyzeAction.setMenuBarData(new MenuData(
-			new String[] { "Tools", MENU_ROOT, "Analyze Function" }));
-		analyzeAction.setDescription(
-			"Analyzes the function containing the cursor using DeepSeek.");
+		analyzeAction.setMenuBarData(new MenuData(new String[] { "Tools", MENU_ROOT, "Analyze Function" }));
+		analyzeAction.setDescription("Analyzes the function containing the cursor using active AI provider.");
 		analyzeAction.setEnabled(true);
 		analyzeAction.markHelpUnnecessary();
 		tool.addAction(analyzeAction);
 		actions.add(analyzeAction);
 
-		DockingAction batchAction =
-			new DockingAction("DeepSeek AI: Batch Analyze Functions", getName()) {
-				@Override
-				public void actionPerformed(ActionContext context) {
-					showBatchDialog();
-				}
-			};
-		batchAction.setMenuBarData(new MenuData(
-			new String[] { "Tools", MENU_ROOT, "Batch Analyze Functions..." }));
-		batchAction.setDescription("Analyzes functions sequentially using DeepSeek, " +
-			"renames symbols, and optionally exports to an enriched C file.");
+		// 2) Batch Analyze Functions
+		DockingAction batchAction = new DockingAction("AI Assistant: Batch Analyze Functions", getName()) {
+			@Override
+			public void actionPerformed(ActionContext context) {
+				showBatchDialog();
+			}
+		};
+		batchAction.setMenuBarData(new MenuData(new String[] { "Tools", MENU_ROOT, "Batch Analyze Functions..." }));
+		batchAction.setDescription("Sequentially analyzes functions with AI, renames symbols, and exports enriched C pseudocode.");
 		batchAction.setEnabled(true);
 		batchAction.markHelpUnnecessary();
 		tool.addAction(batchAction);
 		actions.add(batchAction);
 
-		DockingAction settingsAction = new DockingAction("DeepSeek AI: Settings", getName()) {
+		// 3) Quick Switch Provider
+		DockingAction switchAction = new DockingAction("AI Assistant: Quick Switch Provider", getName()) {
+			@Override
+			public void actionPerformed(ActionContext context) {
+				quickSwitchProvider();
+			}
+		};
+		switchAction.setMenuBarData(new MenuData(new String[] { "Tools", MENU_ROOT, "Quick Switch Provider / Model..." }));
+		switchAction.setDescription("Instantly switch active AI provider (DeepSeek, OpenAI, Claude, Gemini, Ollama, Groq, OpenRouter).");
+		switchAction.setEnabled(true);
+		switchAction.markHelpUnnecessary();
+		tool.addAction(switchAction);
+		actions.add(switchAction);
+
+		// 4) Settings (Providers & Keys)
+		DockingAction settingsAction = new DockingAction("AI Assistant: Settings", getName()) {
 			@Override
 			public void actionPerformed(ActionContext context) {
 				showSettings();
 			}
 		};
-		settingsAction.setMenuBarData(
-			new MenuData(new String[] { "Tools", MENU_ROOT, "Settings (API Key)..." }));
-		settingsAction.setDescription("Configure API key, model, and other preferences.");
+		settingsAction.setMenuBarData(new MenuData(new String[] { "Tools", MENU_ROOT, "Settings (Providers & Keys)..." }));
+		settingsAction.setDescription("Configure AI providers, API keys, models, and generation options.");
 		settingsAction.setEnabled(true);
 		settingsAction.markHelpUnnecessary();
 		tool.addAction(settingsAction);
 		actions.add(settingsAction);
 
-		DockingAction showAction = new DockingAction("DeepSeek AI: Show Last Result",
-			getName()) {
+		// 5) Show Last Result
+		DockingAction showAction = new DockingAction("AI Assistant: Show Last Result", getName()) {
 			@Override
 			public void actionPerformed(ActionContext context) {
 				showLastResult();
 			}
 		};
-		showAction.setMenuBarData(
-			new MenuData(new String[] { "Tools", MENU_ROOT, "Show Last Result" }));
-		showAction.setDescription("Reopens the most recent analysis result dialog.");
+		showAction.setMenuBarData(new MenuData(new String[] { "Tools", MENU_ROOT, "Show Last Result" }));
+		showAction.setDescription("Reopens the most recent AI analysis result dialog.");
 		showAction.setEnabled(true);
 		showAction.markHelpUnnecessary();
 		tool.addAction(showAction);
 		actions.add(showAction);
 
-		DockingAction aboutAction = new DockingAction("DeepSeek AI: About", getName()) {
+		// 6) About
+		DockingAction aboutAction = new DockingAction("AI Assistant: About", getName()) {
 			@Override
 			public void actionPerformed(ActionContext context) {
 				showAbout();
 			}
 		};
 		aboutAction.setMenuBarData(new MenuData(new String[] { "Tools", MENU_ROOT, "About" }));
-		aboutAction.setDescription("Shows information about the DeepSeek AI extension.");
+		aboutAction.setDescription("Shows information about supported AI providers and models.");
 		aboutAction.setEnabled(true);
 		aboutAction.markHelpUnnecessary();
 		tool.addAction(aboutAction);
 		actions.add(aboutAction);
+
+		// Legacy menu compatibility (Tools > DeepSeek AI > ...)
+		DockingAction legacySettings = new DockingAction("DeepSeek AI: Settings", getName()) {
+			@Override
+			public void actionPerformed(ActionContext context) {
+				showSettings();
+			}
+		};
+		legacySettings.setMenuBarData(new MenuData(new String[] { "Tools", MENU_LEGACY, "Settings (API Key)..." }));
+		legacySettings.setEnabled(true);
+		legacySettings.markHelpUnnecessary();
+		tool.addAction(legacySettings);
+		actions.add(legacySettings);
 	}
 
 	@Override
@@ -191,7 +220,8 @@ public class DeepSeekAIPlugin extends ProgramPlugin {
 			return;
 		}
 		if (!config.hasApiKey()) {
-			showInfo("DeepSeek API key is not configured. Please fill in the Settings dialog.");
+			showInfo("API key is not configured for " + config.provider.getDisplayName() +
+				".\nPlease enter your key in the Settings dialog.");
 			showSettings();
 			return;
 		}
@@ -203,11 +233,33 @@ public class DeepSeekAIPlugin extends ProgramPlugin {
 		new TaskLauncher(new DeepSeekAnalyzeTask(this, program, function, config), null);
 	}
 
+	private void quickSwitchProvider() {
+		AiProvider[] providers = AiProvider.values();
+		AiProvider current = config.provider;
+		AiProvider selected = (AiProvider) JOptionPane.showInputDialog(
+			null,
+			"Active Provider : " + current.getDisplayName() + "\n" +
+			"Active Model    : " + config.model + "\n" +
+			"Key Source      : " + config.apiKeySource() + "\n\n" +
+			"Select new AI Provider:",
+			"Quick Switch AI Provider",
+			JOptionPane.QUESTION_MESSAGE,
+			null,
+			providers,
+			current
+		);
+		if (selected != null && selected != current) {
+			config.switchProvider(selected);
+			saveConfig(config);
+			showInfo("Switched to " + selected.getDisplayName() + "\nModel: " + config.model +
+				"\nKey source: " + config.apiKeySource());
+		}
+	}
+
 	private Function resolveCurrentFunction(Program program) {
 		if (currentLocation != null) {
 			Address address = currentLocation.getAddress();
-			Function function =
-				program.getFunctionManager().getFunctionContaining(address);
+			Function function = program.getFunctionManager().getFunctionContaining(address);
 			if (function != null) {
 				return function;
 			}
@@ -215,7 +267,6 @@ public class DeepSeekAIPlugin extends ProgramPlugin {
 		return null;
 	}
 
-	/** Returns the function containing the cursor, or null if none. */
 	public Function getCurrentFunction() {
 		Program program = getCurrentProgram();
 		if (program == null) {
@@ -224,10 +275,6 @@ public class DeepSeekAIPlugin extends ProgramPlugin {
 		return resolveCurrentFunction(program);
 	}
 
-	// ------------------------------------------------------------------
-	// Batch Analysis
-	// ------------------------------------------------------------------
-
 	private void showBatchDialog() {
 		Program program = getCurrentProgram();
 		if (program == null) {
@@ -235,20 +282,18 @@ public class DeepSeekAIPlugin extends ProgramPlugin {
 			return;
 		}
 		if (!config.hasApiKey()) {
-			showInfo("DeepSeek API key is not configured. Please fill in the Settings dialog.");
+			showInfo("API key is not configured for " + config.provider.getDisplayName() +
+				".\nPlease enter your key in the Settings dialog.");
 			showSettings();
 			return;
 		}
 		new BatchAiDialog(this, program, config).setVisible(true);
 	}
 
-	/** Launches batch analysis in the background. */
-	public void startBatchAnalysis(Program program, BatchAiOptions options,
-			List<Function> functions) {
+	public void startBatchAnalysis(Program program, BatchAiOptions options, List<Function> functions) {
 		new TaskLauncher(new BatchAiTask(this, program, config, options, functions), null);
 	}
 
-	/** Called when batch analysis finishes (on Swing EDT). */
 	public void batchFinished(Program program, BatchAiEngine.Result result) {
 		showText(TITLE + " - Batch Analysis Result", result.summary());
 	}
@@ -272,32 +317,41 @@ public class DeepSeekAIPlugin extends ProgramPlugin {
 	}
 
 	private void showAbout() {
-		showText(TITLE + " - About", """
-			DeepSeek AI Ghidra Extension
+		showText(TITLE + " - Multi-Provider AI Assistant", """
+			Multi-Provider AI Code Assistant for Ghidra
+			Version 2.0.0
 
-			Features:
-			  - Decompiles the selected function.
-			  - Sends pseudocode and symbols to the DeepSeek API.
-			  - Explains function behavior and algorithmic intent.
-			  - Identifies complex blocks and suggests inline technical comments.
-			  - Suggests meaningful names for variables and functions.
-			  - Applies approved changes in a single atomic undoable transaction.
+			Supported Major AI Providers:
+			  - OpenAI           : GPT-4o, GPT-4o-mini, o1, o3-mini
+			  - Anthropic Claude : Claude 3.7 Sonnet (Hybrid Reasoning), 3.5 Sonnet, Haiku
+			  - Google Gemini    : Gemini 2.5 Pro, 2.5 Flash, 2.0 Flash
+			  - DeepSeek         : DeepSeek V3 (Chat) and R1 (Reasoner)
+			  - Ollama           : 100% Offline Local Inference (Qwen2.5-Coder, Llama 3.3, R1)
+			  - Groq             : Ultra-fast LPU execution (hundreds of tokens/sec)
+			  - OpenRouter       : Universal AI Gateway with 200+ models
+			  - Mistral AI       : Codestral & Mistral Large
+			  - xAI              : Grok 2 & Grok Beta
+			  - Custom / Local   : Any OpenAI-compatible server (vLLM, LM Studio, Azure)
 
-			Menu Shortcuts:
-			  Tools > DeepSeek AI > Analyze Function
-			  Tools > DeepSeek AI > Batch Analyze Functions...
-			  Tools > DeepSeek AI > Settings (API Key)...
-			  Tools > DeepSeek AI > Show Last Result
+			Key Reverse Engineering Features:
+			  - Decompiles target function and sends pseudocode to the chosen AI model.
+			  - Generates algorithm explanations and intent summaries.
+			  - Spots complex obfuscations or math and suggests line comments.
+			  - Proposes semantic variable renames and entry point function names.
+			  - Interactive multi-tab review dialog with address jump links.
+			  - One-click atomic commit with Ghidra transaction support.
+			  - Batch processing engine with caching and enriched C export.
+			  - Dynamic model discovery for Ollama and cloud providers.
 
-			Settings are also accessible under Edit > Tool Options > DeepSeek AI.
+			Menus:
+			  Tools > AI Assistant > Analyze Function
+			  Tools > AI Assistant > Batch Analyze Functions...
+			  Tools > AI Assistant > Quick Switch Provider / Model...
+			  Tools > AI Assistant > Settings (Providers & Keys)...
+			  Tools > AI Assistant > Show Last Result
 			""");
 	}
 
-	// ------------------------------------------------------------------
-	// Results from Background Tasks
-	// ------------------------------------------------------------------
-
-	/** Called on successful single-function analysis completion (on Swing EDT). */
 	public void analysisFinished(Program program, Function function, DecompiledContext context,
 			AnalysisOutcome outcome) {
 		lastProgram = program;
@@ -329,24 +383,19 @@ public class DeepSeekAIPlugin extends ProgramPlugin {
 		applyOutcome(program, function, outcome, renames, comments, renameFunction, setComment);
 	}
 
-	/** Called when an analysis error occurs. */
 	public void analysisFailed(Program program, Function function, Throwable error) {
 		String message = error == null ? "Unknown error" : error.getMessage();
 		Msg.showError(this, null, TITLE,
 			function.getName() + " could not be analyzed:\n" + message, error);
 	}
 
-	/** Called after modifications have been applied to the program. */
-	public void applyFinished(Program program, Function function,
-			OutcomeApplier.ApplyCounts counts) {
+	public void applyFinished(Program program, Function function, OutcomeApplier.ApplyCounts counts) {
 		showText(TITLE + " - Apply Results", function.getName() + "\n\n" + counts.summary());
 	}
 
-	/** Applies confirmed modifications to the program. */
 	public void applyOutcome(Program program, Function function, AnalysisOutcome outcome,
-			List<AnalysisOutcome.VarRename> renames,
-			List<AnalysisOutcome.LineComment> comments, boolean renameFunction,
-			boolean setFunctionComment) {
+			List<AnalysisOutcome.VarRename> renames, List<AnalysisOutcome.LineComment> comments,
+			boolean renameFunction, boolean setFunctionComment) {
 		new TaskLauncher(
 			new DeepSeekApplyTask(this, program, function, outcome, renames, comments,
 				renameFunction, setFunctionComment),
@@ -358,22 +407,17 @@ public class DeepSeekAIPlugin extends ProgramPlugin {
 		if (options != null) {
 			newConfig.save(options);
 		}
-		showInfo("Settings saved.");
+		showInfo("Settings saved for " + newConfig.provider.getDisplayName() + " (" + newConfig.model + ").");
 	}
 
 	public void showInfo(String message) {
 		Msg.showInfo(this, resultDialog, TITLE, message);
 	}
 
-	/** Shows an error message dialog. */
 	public void showError(String message, Throwable error) {
 		Msg.showError(this, resultDialog, TITLE, message + "\n" +
 			(error == null ? "" : error.getMessage()), error);
 	}
-
-	// ------------------------------------------------------------------
-	// Helpers
-	// ------------------------------------------------------------------
 
 	private void openResultDialog(Program program, Function function, DecompiledContext context,
 			AnalysisOutcome outcome) {
@@ -384,7 +428,6 @@ public class DeepSeekAIPlugin extends ProgramPlugin {
 		resultDialog.setVisible(true);
 	}
 
-	/** Displays long text in a scrollable dialog. */
 	private void showText(String title, String text) {
 		JTextArea area = new JTextArea(text);
 		area.setEditable(false);
@@ -394,7 +437,6 @@ public class DeepSeekAIPlugin extends ProgramPlugin {
 		panel.add(scrollPane, BorderLayout.CENTER);
 		panel.setPreferredSize(new Dimension(760, 440));
 
-		javax.swing.JOptionPane.showMessageDialog(null, panel, title,
-			javax.swing.JOptionPane.INFORMATION_MESSAGE);
+		JOptionPane.showMessageDialog(null, panel, title, JOptionPane.INFORMATION_MESSAGE);
 	}
 }

@@ -1,5 +1,5 @@
 /* ###
- * DeepSeek AI - Ghidra Extension
+ * Ghidra AI Extension
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  */
@@ -14,7 +14,7 @@ import ghidra.util.task.Task;
 import ghidra.util.task.TaskMonitor;
 
 /**
- * Background task that decompiles the selected function, queries the DeepSeek API,
+ * Background task that decompiles the selected function, queries the AI provider,
  * and passes the parsed result to the plugin.
  */
 public class DeepSeekAnalyzeTask extends Task {
@@ -26,7 +26,7 @@ public class DeepSeekAnalyzeTask extends Task {
 
 	public DeepSeekAnalyzeTask(DeepSeekAIPlugin plugin, Program program, Function function,
 			DeepSeekConfig config) {
-		super("DeepSeek AI: Analyzing " + function.getName(), false, true, false);
+		super("AI Analysis: " + function.getName(), false, true, false);
 		this.plugin = plugin;
 		this.program = program;
 		this.function = function;
@@ -41,7 +41,7 @@ public class DeepSeekAnalyzeTask extends Task {
 				DecompilerHelper.build(program, function, monitor, config.maxCodeChars);
 			monitor.checkCanceled();
 
-			monitor.setMessage("Sending to DeepSeek API (" + config.model + ")...");
+			monitor.setMessage("Sending to " + config.provider.getDisplayName() + " (" + config.model + ")...");
 			String system = Prompt.systemPrompt(config);
 			String user = Prompt.userPrompt(context, config);
 			DeepSeekClient.ChatResponse response =
@@ -50,6 +50,8 @@ public class DeepSeekAnalyzeTask extends Task {
 
 			monitor.setMessage("Processing response...");
 			AnalysisOutcome outcome = AnalysisOutcome.parse(response.content, program);
+			outcome.providerName = response.providerName;
+			outcome.modelName = response.modelName;
 			outcome.usageText = response.usageText();
 			if (!response.finishReason.isEmpty()) {
 				outcome.usageText = outcome.usageText.isEmpty() ? response.finishReason

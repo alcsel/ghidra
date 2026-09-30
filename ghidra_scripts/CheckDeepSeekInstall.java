@@ -1,7 +1,7 @@
 /* ###
- * DeepSeek AI - Ghidra Extension
+ * Ghidra AI Extension
  *
- * Installation verification diagnostic script.
+ * Installation and Multi-Provider verification diagnostic script.
  *
  * In Ghidra : Window > Script Manager > CheckDeepSeekInstall > Run
  * Headless  : analyzeHeadless ... -postScript CheckDeepSeekInstall.java
@@ -9,8 +9,9 @@
  * Verifies:
  *   1. deepseekai.DeepSeekAIPlugin class is discoverable via ClassSearcher.
  *   2. Gson and java.net.http runtime dependencies are resolvable.
- *   3. JSON parsing and outcome mapping works properly.
- *   4. DeepSeekAI tool template (.tool) is visible to Ghidra.
+ *   3. Multi-AI provider classes (AiProvider, ApiProtocol, DeepSeekConfig, DeepSeekClient) are operational.
+ *   4. JSON parsing and outcome mapping works properly.
+ *   5. AI tool template (.tool) is visible to Ghidra.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  */
@@ -33,17 +34,18 @@ public class CheckDeepSeekInstall extends GhidraScript {
 	@Override
 	protected void run() throws Exception {
 		println("==========================================================");
-		println(" DeepSeek AI Extension - Installation Check");
+		println(" Ghidra AI Extension - Multi-Provider Installation Check");
 		println("==========================================================");
 
 		checkPluginClass();
 		checkDependencies();
+		checkMultiAiProviders();
 		checkJsonParsing();
 		checkToolTemplate();
 
 		println("");
 		if (problems == 0) {
-			println("RESULT: All checks passed. Extension is ready to use.");
+			println("RESULT: All checks passed. Multi-AI extension is ready to use.");
 		}
 		else {
 			println("RESULT: " + problems + " issues found (see [ERROR] lines above).");
@@ -95,6 +97,27 @@ public class CheckDeepSeekInstall extends GhidraScript {
 		}
 		catch (Throwable t) {
 			fail("Could not instantiate DeepSeekConfig: " + t);
+		}
+	}
+
+	/** Checks multi-provider classes and enum definitions. */
+	private void checkMultiAiProviders() {
+		try {
+			Class<?> providerClass = Class.forName("deepseekai.AiProvider");
+			Object[] enumConstants = providerClass.getEnumConstants();
+			println("[OK]   AiProvider verified with " + enumConstants.length + " major providers:");
+			for (Object constant : enumConstants) {
+				Method getDisplayName = providerClass.getMethod("getDisplayName");
+				String name = (String) getDisplayName.invoke(constant);
+				println("         - " + name);
+			}
+
+			Class<?> clientClass = Class.forName("deepseekai.DeepSeekClient");
+			clientClass.getDeclaredConstructor().newInstance();
+			println("[OK]   deepseekai.DeepSeekClient multi-protocol engine initialized");
+		}
+		catch (Throwable t) {
+			fail("Multi-AI provider check failed: " + t);
 		}
 	}
 
@@ -161,10 +184,10 @@ public class CheckDeepSeekInstall extends GhidraScript {
 				}
 			}
 			if (found) {
-				println("[OK]   DeepSeekAI tool template found (inside jar under defaultTools/)");
+				println("[OK]   AI tool template found (inside jar under defaultTools/)");
 			}
 			else {
-				println("[..]   DeepSeekAI tool template is not in default tools list.");
+				println("[..]   AI tool template is not in default tools list.");
 				println("       It will still appear in Tool Chest; " +
 					"also ~/.ghidra/.ghidra_<version>/tools/DeepSeekAI.tool is installed.");
 			}

@@ -6,7 +6,7 @@ name: Build Extension
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, standalone-extension]
     tags: ['v*']
   pull_request:
   workflow_dispatch:

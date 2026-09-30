@@ -1,353 +1,207 @@
-# DeepSeek AI — Ghidra Eklentisi
+# Ghidra AI Eklentisi - Çoklu Yapay Zeka Asistanı (v2.0)
 
-Ghidra içinden **DeepSeek API** ile decompile edilmiş kodu analiz eden eklenti.
+[![Ghidra](https://img.shields.io/badge/Ghidra-12.1.2%2B-blue.svg)](https://ghidra-sre.org/)
+[![Java](https://img.shields.io/badge/Java-21%2B-orange.svg)](https://adoptium.net/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
+[![Multi-AI](https://img.shields.io/badge/AI-OpenAI%20%7C%20Claude%20%7C%20Gemini%20%7C%20DeepSeek%20%7C%20Ollama-blueviolet.svg)](https://github.com/ghidra-ai)
 
-Kısaca yaptığı işler:
+Ghidra decompiler arayüzüne doğrudan entegre olan, tüm majör Büyük Dil Modellerini (LLM) destekleyen gelişmiş tersine mühendislik yapay zeka eklentisi. İster bulut servislerini (OpenAI, Claude, Gemini, DeepSeek, Groq, OpenRouter) kullanın, ister veri gizliliği için yerel **Ollama** modelleriyle %100 çevrimdışı (offline) çalışın.
+
+---
+
+### Desteklenen Yapay Zeka Sağlayıcıları ve Modeller
+
+| Sağlayıcı | Desteklenen Modeller | Protokol | Anahtar Gerekli mi? | Çevre Değişkeni (Env Var) | En İyi Kullanım Alanı |
+| :--- | :--- | :--- | :---: | :--- | :--- |
+| **OpenAI** | `gpt-4o`, `gpt-4o-mini`, `o1`, `o3-mini`, `gpt-4.5` | OpenAI Chat | Evet | `OPENAI_API_KEY` | Genel tersine mühendislik, karmaşık algoritma analizi |
+| **Anthropic Claude** | `claude-3-7-sonnet-20250219`, `claude-3-5-sonnet`, `claude-3-5-haiku` | Anthropic Messages | Evet | `ANTHROPIC_API_KEY` | Derin mantıksal akıl yürütme (hybrid thinking), büyük fonksiyonlar |
+| **Google Gemini** | `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.0-flash` | OpenAI Uyumlu | Evet | `GEMINI_API_KEY`, `GOOGLE_API_KEY` | Yüksek hız, devasa bağlam penceresi, uygun maliyet |
+| **DeepSeek** | `deepseek-chat` (V3), `deepseek-reasoner` (R1) | OpenAI Chat | Evet | `DEEPSEEK_API_KEY` | Düşük maliyetle yüksek başarımlı kod analizi ve R1 mantık yürütme |
+| **Ollama** *(Yerel / Çevrimdışı)* | `qwen2.5-coder:32b`, `llama3.3:70b`, `deepseek-r1:14b`, `codellama` | OpenAI Chat | **Hayır (Ücretsiz/Offline)** | `OLLAMA_API_KEY` *(opsiyonel)* | **%100 gizlilik gerektiren, dışarı veri sızmaması gereken şirket/kurum analizleri** |
+| **Groq** | `llama-3.3-70b-versatile`, `deepseek-r1-distill-llama-70b` | OpenAI Chat | Evet | `GROQ_API_KEY` | Ultra hızlı LPU çıkarımı (saniyede yüzlerce token) |
+| **OpenRouter** | `anthropic/claude-3.7-sonnet`, `deepseek/deepseek-r1`, `openai/gpt-4o` | OpenAI Chat | Evet | `OPENROUTER_API_KEY` | Tek API anahtarı ile 200'den fazla farklı laboratuvar modeline erişim |
+| **Mistral AI** | `codestral-latest`, `mistral-large-latest` | OpenAI Chat | Evet | `MISTRAL_API_KEY` | Kod için özel optimize edilmiş modeller |
+| **xAI** | `grok-2`, `grok-2-mini`, `grok-beta` | OpenAI Chat | Evet | `XAI_API_KEY` | xAI Grok serisi modelleri |
+| **Özel / Yerel Sunucu** | `local-model`, `custom-model` | OpenAI Chat | İsteğe Bağlı | `CUSTOM_API_KEY`, `AI_API_KEY` | Özel LM Studio, vLLM, TextGenWebUI veya Azure OpenAI sunucuları |
+
+---
+
+### Temel Yetenekler
 
 | Yetenek | Açıklama |
-|---|---|
-| **Açıklama** | Seçili fonksiyonun ne yaptığını ayrıntılı biçimde Türkçe açıklar. |
-| **Yorum yazma** | Anlaşılması zor satırları bulur ve o satırlara teknik yorum önerir. |
-| **Değişken isimlendirme** | `uVar1`, `param_1`, `iVar3` gibi isimleri anlamlı isimlerle (`packet_length`, `socket_fd`, `buffer`) değiştirir. |
-| **Fonksiyon isimlendirme** | Anlamlıysa fonksiyona yeni isim ve blok yorumu önerir. |
-| **Belirsizlik raporu** | Emin olmadığı noktaları ayrı bir sekmede listeler (uydurma yapmaz). |
-
-Tüm öneriler önce bir sonuç penceresinde gösterilir, siz onaylamadan programa **hiçbir şey** uygulanmaz. Uygulama tek bir Ghidra transaction'ında yapılır, yani **Ctrl+Z** ile tamamen geri alınabilir.
+| :--- | :--- |
+| **Çoklu Sağlayıcı Merkezi** | OpenAI, Claude, Gemini, DeepSeek, Ollama, Groq ve diğerleri arasında tek tıkla geçiş yapın. |
+| **Dinamik Model Keşfi** | Ayarlar penceresindeki **Modelleri Çek 🔄** butonu ile yerel Ollama veya sunucudaki yüklü modelleri anında listeleyin. |
+| **Sağlayıcı Bazlı Anahtar Belleği** | Sağlayıcılar arasında geçiş yaptığınızda girdiğiniz API anahtarları, özel URL ve seçtiğiniz model kaybolmaz. |
+| **Fonksiyon Açıklaması** | Decompile edilen mantığın ve algoritmanın doğal dilde detaylı açıklamasını sunar. |
+| **Satır İçi Teknik Yorumlar** | Şifrelenmiş, karmaşık veya dikkat çeken matematiksel blokları tespit eder ve doğrudan adreslere yorum ekler. |
+| **Değişken İsimlendirme** | Derleyici kalıntılarını (`uVar1`, `param_1`, `iVar3`), anlamsal isimlerle (`packet_len`, `buffer_ptr`) değiştirir. |
+| **Fonksiyon İsimlendirme** | Fonksiyonun amacına uygun net bir isim ve giriş noktası için blok yorumu önerir. |
+| **Belirsizlik Tespiti** | Halüsinasyon görmez; emin olunamayan kısımları "Belirsizlikler" sekmesinde listeler. |
+| **Etkileşimli İnceleme Arayüzü** | Önerileri onaylamadan önce filtreleyebilir, adreslere çift tıklayarak decompiler'da zıplayabilirsiniz. |
+| **Toplu Fonksiyon Analizi (Batch)** | Tüm binary'yi otomatik olarak sırayla analiz eder, isimlendirir ve zenginleştirilmiş C dosyası olarak dışa aktarır. |
+| **Sıfır Dış Bağımlılık** | Ghidra'nın dahili kütüphaneleriyle (`java.net.http`, `Gson`) derlenir; harici JAR dosyası gerektirmez. |
 
 ---
 
 ## 1. Gereksinimler
 
-- Ghidra **12.x** (test: 12.1.2 PUBLIC)
-- **JDK 21+** (Ghidra 12 zaten Java 21 ister)
-- İnternet bağlantısı ve bir **DeepSeek API anahtarı** (`sk-...`) — <https://platform.deepseek.com>
+- **Ghidra**: `12.1.2` (veya `11.x`+)
+- **JDK**: `21+` (Örn. Eclipse Adoptium Temurin 21, Microsoft OpenJDK 21)
+- **Yapay Zeka Erişimi**: Seçtiğiniz sağlayıcıdan API anahtarı veya yerel **Ollama** kurulumu.
+
+---
 
 ## 2. Kurulum
 
-### Yol A — Betikle (önerilen, internet gerekmez)
+### Yöntem A - PowerShell Scripti (Tavsiye Edilen, Çevrimdışı)
+
+Gradle kurulumuna veya internet bağlantısına gerek duymaz. Ghidra'nın dahili JAR dosyalarıyla derler:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
-Betik şunları yapar:
-
-1. Kaynakları Ghidra'nın kendi jar'larına karşı `javac` ile derler.
-2. `DeepSeekAI.tool` araç şablonunu Ghidra'nın gerçek `CodeBrowser.tool` dosyasından üretir ve `deepseekai.DeepSeekAIPlugin` sınıfını içine ekler.
-3. `dist\ghidra_12.1.2_PUBLIC_<tarih>_DeepSeekAI.zip` paketini oluşturur.
-4. Eklentiyi `Ghidra\Extensions\DeepSeekAI\` altına **kurar** ve araç şablonunu `%USERPROFILE%\.ghidra\.ghidra_12.1.2_PUBLIC\tools\DeepSeekAI.tool` altına kopyalar.
-
-Betik parametreleri:
-
-| Parametre | Açıklama |
-|---|---|
-| `-GhidraDir` | Ghidra kurulum dizini. Verilmezse `GHIDRA_INSTALL_DIR` ortam değişkeni, o da yoksa `Desktop`/`Documents`/`Downloads`/`C:\`/`C:\Tools`/`D:\` altında `ghidra_*_PUBLIC` otomatik aranır. |
-| `-JavaHome` | JDK 21+ dizini. Verilmezse `JAVA_HOME`, o da yoksa bilinen Adoptium/Corretto yolları denenir. |
-| `-Author` | `extension.properties` içine yazılacak yazar adı (varsayılan: `Selim Calici`). |
-| `-NoInstall` | Sadece derle ve paketle; Ghidra kurulumuna kopyalama. |
+Ghidra farklı bir dizindeyse yolu belirtin:
 
 ```powershell
-.\build.ps1 -GhidraDir "D:\ghidra_12.1.2_PUBLIC" -JavaHome "C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot"
-.\build.ps1 -NoInstall
+powershell -ExecutionPolicy Bypass -File .\build.ps1 -GhidraDir "C:\Tools\ghidra_12.1.2_PUBLIC"
 ```
 
-### Yol B — Gradle ile (internet gerekir)
+Scriptin yaptığı işlemler:
+1. Kaynak kodları `javac` ile derler.
+2. `DeepSeekAI.tool` şablonunu Ghidra'nın `CodeBrowser.tool` şablonundan türeterek eklentiyi entegre eder.
+3. `dist/` klasörü altına sürüm zip paketini oluşturur.
+4. Eklentiyi doğrudan `Ghidra/Extensions/DeepSeekAI` dizinine ve kullanıcı araç kutusuna kurar.
 
-Depoda standart Gradle wrapper bulunur. Gradle 9.4.1 otomatik indirilir.
+### Yöntem B - Manuel ZIP Kurulumu
 
+1. Ghidra ana ekranında: `File > Install Extensions...`
+2. Sağ üstteki `+` (yeşil artı) butonuna tıklayın.
+3. `dist/ghidra_12.1.2_PUBLIC_YYYYMMDD_DeepSeekAI.zip` dosyasını seçin.
+4. Ghidra'yı yeniden başlatın.
+
+---
+
+## 3. Yapılandırma ve API Anahtarları
+
+### Seçenek 1 - Etkileşimli Ayarlar Penceresi (GUI)
+
+1. Ghidra CodeBrowser'ı açın.
+2. `Tools > AI Assistant > Settings (Providers & Keys)...` menüsüne tıklayın.
+3. İstediğiniz Yapay Zeka sağlayıcısını seçin.
+4. API anahtarınızı girin (veya `Get Key ↗` butonuna basarak doğrudan sağlayıcı konsoluna gidin).
+5. Ollama veya OpenAI için `Fetch Models 🔄` butonuna basarak modelleri çekin.
+6. `Test Connection` butonuna basarak bağlantıyı ve gecikmeyi test edin.
+7. `Save & Apply` butonuna basarak kaydedin.
+
+### Seçenek 2 - Ortam Değişkenleri (Environment Variables)
+
+Eklenti, aşağıdaki ortam değişkenlerini otomatik olarak okur:
+
+| Sağlayıcı | Ortam Değişkeni |
+| :--- | :--- |
+| **OpenAI** | `OPENAI_API_KEY` |
+| **Anthropic Claude** | `ANTHROPIC_API_KEY` |
+| **Google Gemini** | `GEMINI_API_KEY` veya `GOOGLE_API_KEY` |
+| **DeepSeek** | `DEEPSEEK_API_KEY` |
+| **Groq** | `GROQ_API_KEY` |
+| **OpenRouter** | `OPENROUTER_API_KEY` |
+| **Mistral** | `MISTRAL_API_KEY` |
+| **xAI Grok** | `XAI_API_KEY` |
+| **Özel / Custom** | `CUSTOM_API_KEY` veya `AI_API_KEY` |
+
+PowerShell ile tanımlama:
 ```powershell
-$env:GHIDRA_INSTALL_DIR = "C:\yol\ghidra_12.1.2_PUBLIC"
-.\gradlew.bat buildExtension
+[System.Environment]::SetEnvironmentVariable("OPENAI_API_KEY", "sk-...", "User")
+[System.Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", "sk-ant-...", "User")
+[System.Environment]::SetEnvironmentVariable("DEEPSEEK_API_KEY", "sk-...", "User")
 ```
 
-`-P` ile de verilebilir: `.\gradlew.bat -PGHIDRA_INSTALL_DIR=C:\yol\ghidra_12.1.2_PUBLIC buildExtension`
+### Seçenek 3 - Yerel Özellikler Dosyası (`.properties`)
 
-Çıktı: `dist\ghidra_<sürüm>_<tarih>_DeepSeekAI.zip`
-
-> Not: `build.ps1` ve Gradle yolu aynı dosya adıyla aynı paketi üretir.
-> `build.ps1` internet gerektirmez ve eklentiyi doğrudan Ghidra kurulumunuza da kopyalar.
-
-### Yol C — Ghidra arayüzü ile
-
-1. Ghidra'yı açın.
-2. **File → Install Extensions… → +** ve `dist\..._DeepSeekAI.zip` dosyasını seçin.
-3. Ghidra'yı yeniden başlatın.
-
-### Kurulumdan sonra kontrol
-
-- Menüde **Tools → DeepSeek AI** görünüyor mu?
-- Görünmüyorsa: **File → Configure →** arama kutusuna `DeepSeek` yazın →
-  **DeepSeek AI** satırını işaretleyin → OK.
-
-## 3. Kullanım
-
-1. Bir program açın ve analiz edilmiş (decompile edilebilen) bir fonksiyonun **içine** tıklayın.
-2. **Tools → DeepSeek AI → Ayarlar (API anahtarı)…** menüsünden API anahtarınızı girin
-   ve **Bağlantıyı Test Et** ile doğrulayın.
-3. **Tools → DeepSeek AI → Fonksiyonu Analiz Et** (veya doğrudan menüdeki bu komut).
-4. Birkaç saniye içinde sonuç penceresi açılır:
-
-| Sekme | İçerik |
-|---|---|
-| **Açıklama** | Fonksiyonun ne yaptığı. |
-| **Yorumlar** | `Adres → yorum` önerileri (işaretli olanlar uygulanır). |
-| **Değişkenler** | `Eski ad → Yeni ad` önerileri, tip ve güven puanı. |
-| **Zor Kısımlar** | Neden zor olduğu + önerilen yorum. |
-| **Belirsizlikler** | Modelin emin olmadığı noktalar. |
-| **Ham Yanıt** | API'den dönen ham metin (hata ayıklama için). |
-
-5. **Seçilenleri Uygula** düğmesine basın. Tüm değişiklikler tek transaction'da uygulanır.
-
-### Kısayol: otomatik uygulama
-
-Ayarlar'da *sormadan uygula* seçeneklerini işaretlerseniz analiz biter bitmez sonuçlar
-doğrudan programa yazılır (sonuç penceresi açılmaz, sadece özet gösterilir).
-
-## 3b. Tüm binary'yi analiz et — orijinal kaynağa yaklaşmak
-
-**Tools → DeepSeek AI → Tüm Fonksiyonları Analiz Et (Toplu)…**
-
-Bu mod, programdaki fonksiyonları **sırayla** DeepSeek'e gönderir; `FUN_00401040`
-gibi isimleri `create_and_show_main_window`, `uVar1` gibi değişkenleri `hinstance`
-gibi gerçekçi adlara çevirir ve yorumları yazar. Böylece decompile çıktısı
-orijinal C kaynağına belirgin biçimde yaklaşır.
-
-> **Gerçekçi beklenti:** Orijinal kaynak kodu birebir geri getirilemez — derleyici
-> sembol, tip ve isim bilgisini siler. Elde edilen şey, AI tarafından
-> **isimlendirilmiş ve yorumlanmış decompiler çıktısıdır**. `WinHelloCPP.exe`
-> üzerinde testte `InitInstance` fonksiyonu **`create_and_show_main_window`** olarak
-> adlandırıldı ve parametreleri **`hInstance` / `nCmdShow`** olarak belirlendi.
-
-Pencerede şu ayarlar var:
-
-| Ayar | Açıklama |
-|---|---|
-| **Hangi fonksiyonlar** | Tüm program / seçili adres aralığı / imleçteki fonksiyon |
-| **Sadece ismi çözülememiş (FUN_*)** | Açıkken yalnızca otomatik isimli fonksiyonlar işlenir. Bir kez isimlendirilen fonksiyonlar sonraki çalıştırmalarda **atlanır** — yani tekrar çalıştırmak kalanları işler. |
-| **Thunk/external atla** | Boş thunk'ları ve DLL import'larını atlar |
-| **En az / en fazla boyut** | Çok küçük ve çok büyük fonksiyonları eler |
-| **En fazla fonksiyon** | 0 = sınırsız. Ücret kontrolü için sınır koyun. |
-| **İstekler arası bekleme** | API'yi yormamak için ms cinsinden bekleme |
-| **Ne uygulanacak** | Fonksiyon adları / değişken adları / yorumlar — istediğinizi kapatabilirsiniz |
-| **Önbellek kullan** | Aynı fonksiyon ikinci kez API'ye gönderilmez (yarıda kalan iş kaldığı yerden sürer) |
-| **Zenginleştirilmiş .c yaz** | İşlenen fonksiyonları AI özeti + değişken eşleşmesi ile birlikte tek `.c` dosyasına yazar |
-
-Güvenlik önlemleri:
-
-- **Malİyet onayı:** 15'ten fazla fonksiyon seçilirse onay penceresi çıkar ve tahmini
-  token sayısı gösterilir.
-- **Tahmini gösterge:** Pencerede canlı olarak "Seçilen fonksiyon: N | tahmini ~X token" yazar.
-- **İptal edilebilir:** Durdurduğunuzda o ana kadarki değişiklikler ve önbellek korunur;
-  tekrar başlattığınızda kaldığı yerden devam eder.
-- **Geri alınabilir:** Her fonksiyon kendi transaction'ında yazılır; **Ctrl+Z** ile
-  fonksiyon fonksiyon geri alabilirsiniz.
-
-### Önbellek ve çıktı dosyaları
-
-| Dosya | İçerik |
-|---|---|
-| `<çıktı>.c` | AI özeti, imza, değişken eşleşmesi, belirsizlikler ve decompile kodu içeren kaynak benzeri çıktı. Sonda fonksiyon indeksi bulunur. |
-| `<çıktı>.c.cache.json` | Her fonksiyon için modelin ham JSON yanıtı + `applied` işareti. Aynı fonksiyon tekrar gönderilmez. |
-
-`.c` dosyası istemediyseniz önbellek `%USERPROFILE%\<program>.deepseek-cache.json`
-konumuna yazılır. Önbelleği silmek = sıfırdan analiz.
-
-### Ücret tahmini
-
-Fonksiyon başına kabaca **1.500–3.000 token** (fonksiyonun boyutuna göre).
-Örnek: 300 fonksiyon ≈ 0,5–1 milyon token. Küçük ikililerde birkaç sent,
-büyük ikililerde birkaç dolar. Bu yüzden:
-
-1. Önce **küçük bir aralıkta** deneyin (kapsam: *seçili aralık*, veya *en fazla fonksiyon: 10*).
-2. Sonucu `deepseek-reasoner` yerine **`deepseek-chat`** ile alın (belirgin biçimde ucuz).
-3. `Temperature` düşük (0.2) kalsın — isimlendirme kararlılığı için.
-
-## 4. Ayarlar
-
-Ayarlar hem eklentinin kendi penceresinden hem de **Edit → Tool Options → DeepSeek AI**
-üzerinden değiştirilebilir:
-
-| Ayar | Varsayılan | Açıklama |
-|---|---|---|
-| API Key | (boş) | DeepSeek API anahtarı. |
-| API Base URL | `https://api.deepseek.com` | Uç nokta. |
-| Model | `deepseek-chat` | `deepseek-chat` (hızlı) veya `deepseek-reasoner` (derin akıl yürütme). |
-| Temperature | `0.2` | Düşük = daha kararlı sonuç. |
-| Max Tokens | `8192` | Yanıt uzunluğu sınırı. |
-| Request Timeout | `180` sn | Ağ zaman aşımı. |
-| Response Language | `Turkce` | Açıklama ve yorumların dili. |
-| Max decompiled code characters | `24000` | API'ye gönderilen kodun üst sınırı. |
-| Auto apply … | kapalı | Analiz bittikten sonra onay sormadan uygula. |
-
-### API anahtarı nerede saklanır?
-
-Öncelik sırası:
-
-1. **Ayarlar penceresi / Edit → Tool Options → DeepSeek AI** — girdiğiniz anahtar
-   Ghidra'nın tool options dosyasında saklanır (`%USERPROFILE%\.ghidra\.ghidra_<sürüm>\...`).
-2. **`DEEPSEEK_API_KEY` ortam değişkeni** — bu dosyaya hiç yazılmaz.
-3. **`%USERPROFILE%\.deepseek_ghidra.properties`** — yerel gizli anahtar dosyası:
+Kullanıcı ev dizininizde `~/.ghidra_ai.properties` (veya `~/.deepseek_ghidra.properties`) dosyası oluşturun:
 
 ```properties
-apiKey=sk-xxxxxxxxxxxxxxxx
+# Aktif sağlayıcı: OPENAI, ANTHROPIC, GEMINI, DEEPSEEK, OLLAMA, GROQ, OPENROUTER, MISTRAL, XAI
+provider=OPENAI
+
+# Sağlayıcı bazlı API anahtarları
+openai.apiKey=sk-...
+anthropic.apiKey=sk-ant-...
+gemini.apiKey=AIzaSy...
+deepseek.apiKey=sk-...
+groq.apiKey=gsk_...
+openrouter.apiKey=sk-or-...
+mistral.apiKey=...
+xai.apiKey=...
 ```
 
-Ortam değişkenini kalıcı olarak tanımlamak:
+---
 
+## 4. Kullanım
+
+### 4.1 Tekil Fonksiyon Analizi
+
+1. İmlecinizi Listing veya Decompiler penceresinde analiz etmek istediğiniz fonksiyonun içine getirin.
+2. `Tools > AI Assistant > Analyze Function` seçeneğine tıklayın.
+3. Yapay zeka kodu analiz eder ve sonuç inceleme penceresi açılır:
+   - **Özet**: Fonksiyonun genel amacı ve çalışma mantığı.
+   - **Değişken İsimleri**: Önerilen yeni isimler, tipler ve güven puanları.
+   - **Satır Yorumları**: Önemli talimatlara eklenecek teknik açıklamalar.
+   - **Karmaşık Bloklar**: Şifreleme, matematik veya özel algoritma tespitleri.
+   - **Belirsizlikler**: İnsan doğrulaması tavsiye edilen şüpheli durumlar.
+4. İstediğiniz değişiklikleri seçip **Apply Confirmed Changes** butonuna basarak Ghidra veritabanına tek işlemde (transaction) uygulayın.
+
+### 4.2 Hızlı Sağlayıcı Değiştirme
+
+GPT-4o, Claude 3.7 ve yerel Ollama modellerini birbirleriyle kıyaslamak mı istiyorsunuz?
+- Menüden `Tools > AI Assistant > Quick Switch Provider / Model...` seçeneğine tıklayın.
+- Listeden yeni sağlayıcıyı seçin; tüm ayarlar ve anahtarlar anında devreye girer!
+
+### 4.3 %100 Çevrimdışı (Offline) Tersine Mühendislik (Ollama)
+
+Gizli şirket dosyaları veya internet bağlantısı olmayan güvenli laboratuvar ortamları için:
+1. Bilgisayarınıza [Ollama](https://ollama.com/) kurun ve modeli çalıştırın:
+   ```bash
+   ollama run qwen2.5-coder:32b
+   ```
+2. Ghidra'da `Tools > AI Assistant > Settings (Providers & Keys)...` penceresini açın.
+3. Sağlayıcı olarak **Ollama (Local / Offline RE)** seçin.
+4. Base URL varsayılan olarak `http://localhost:11434/v1` gelecektir. API anahtarı gerekmez!
+5. `Fetch Models 🔄` butonuna basarak yüklü modelinizi seçin.
+6. `Save & Apply` ile kaydedin. Kodlarınız cihazınızdan asla dışarı çıkmaz!
+
+### 4.4 Toplu Analiz (Batch Analysis)
+
+Tüm binary'yi veya seçili fonksiyon kümesini topluca analiz edin:
+1. `Tools > AI Assistant > Batch Analyze Functions...` penceresini açın.
+2. Filtreleri belirleyin (kütüphane fonksiyonlarını atla, boyut sınırları vb.).
+3. Otomatik isimlendirme, yorum ekleme ve `.c` çıktı dosyası oluşturmayı aktifleştirin.
+4. **Start Batch Analysis** butonuna basarak işlemi başlatın.
+
+---
+
+## 5. Teşhis ve Test Scriptleri
+
+Ghidra `Script Manager` veya `analyzeHeadless` üzerinden çalıştırabileceğiniz scriptler:
+
+| Script | Görevi |
+| :--- | :--- |
+| `CheckDeepSeekInstall.java` | Eklenti kurulumunu, bağımlılıkları ve 10 sağlayıcı entegrasyonunu doğrular. |
+| `TestAiApi.java` | GUI veya komut satırından herhangi bir yapay zeka sağlayıcısına ping atarak bağlantıyı test eder. |
+| `TestBatchAnalysis.java` | Toplu analiz motorunu test eder. |
+| `CheckPluginRegistration.java` | Aktif araçtaki eklenti kayıt durumunu denetler. |
+
+Komut satırından bağlantı testi örneği:
 ```powershell
-setx DEEPSEEK_API_KEY "sk-xxxxxxxxxxxxxxxx"
+analyzeHeadless.bat C:\Temp TempProj -postScript TestAiApi.java openai gpt-4o sk-...
+analyzeHeadless.bat C:\Temp TempProj -postScript TestAiApi.java anthropic claude-3-7-sonnet-20250219 sk-ant-...
+analyzeHeadless.bat C:\Temp TempProj -postScript TestAiApi.java ollama qwen2.5-coder:32b
 ```
 
-> **Güvenlik:** Kaynak kodda hiçbir API anahtarı yoktur; depoyu güvenle paylaşabilirsiniz.
-> `.gitignore` yerel sır dosyalarını (`secrets.properties`, `*.local.properties`,
-> `.deepseek_ghidra.properties`) zaten dışlar. Anahtarınızı `extension.properties`,
-> `build.gradle` gibi depoya giren dosyalara **yazmayın**.
+---
 
-## 5. Nasıl çalışır?
+## 6. Lisans
 
-1. **Decompile** — `DecompInterface` ile fonksiyon C pseudocode'una çevrilir.
-2. **Adres etiketleme** — decompiler'ın `ClangTokenGroup` işaretlemesi (markup) gezilerek
-   her satırın başına `[0x00401020]` biçiminde adres etiketi eklenir. Böylece modelin
-   verdiği yorum adresleri birebir eşleşir.
-3. **Sembol tablosu** — `HighFunction.getLocalSymbolMap()` üzerinden parametreler ve
-   yerel değişkenler (tip, konum, adres) modele verilir.
-4. **İstem (prompt)** — modele katı bir JSON şeması dayatılır: `summary`,
-   `function_name`, `function_comment`, `hard_parts`, `line_comments`,
-   `variable_renames`, `uncertainties`.
-5. **Doğrulama** — dönen adresler `AddressSpace` ile çözümlenir; değişken adları
-   geçerli C tanımlayıcısı / C anahtar kelimesi değil / yinelenen isim yok /
-   adres yinelenmiyor kontrollerinden geçer. Uymayan öneriler otomatik işaretsiz gelir.
-6. **Uygulama** — `HighFunctionDBUtil.updateDBVariable(...)`,
-   `Function.setName(...)`, `Listing.setComment(...)` çağrılarıyla tek transaction.
-
-## 6. Sorun giderme
-
-| Belirti | Çözüm |
-|---|---|
-| Menüde "DeepSeek AI" yok | **File → Configure** → arama → **DeepSeek AI** işaretleyin. Eklenti kurulu mu: `Ghidra\Extensions\DeepSeekAI\lib\DeepSeekAI.jar` |
-| `HTTP 401` | API anahtarı hatalı/boş. **Ayarlar → Bağlantıyı Test Et**. |
-| `HTTP 402` | DeepSeek hesabınızda bakiye yok. |
-| `Decompile edilemedi` | Fonksiyon çok büyük ya da decompiler desteklemiyor; başka bir fonksiyon deneyin. |
-| `Yanıt JSON olarak çözümlenemedi` | Yanıt penceresindeki **Ham Yanıt** sekmesine bakın. `Temperature` değerini düşürün veya `deepseek-chat` modeline geçin. |
-| Yorumlar/değişkenler uygulanmıyor | Modelin verdiği adres koda çözümlenmemiş olabilir; tabloda `[adres çözümlenemedi]` notunu arayın. |
-| Eklenti yüklenmiyor (Log) | `%USERPROFILE%\.ghidra\.ghidra_<sürüm>\application.log` dosyasına bakın. |
-
-## 7. Kaynak düzeni
-
-```
-DeepSeekGhidra\
-├── build.ps1                         Derle + paketle + kur (offline, javac)
-├── build.gradle / settings.gradle     Ghidra Gradle derlemesi (online)
-├── gradlew / gradlew.bat / gradle\    Standart Gradle wrapper (9.4.1)
-├── extension.properties               Eklenti meta verisi
-├── Module.manifest                    Ghidra modul isareti
-├── LICENSE                            Apache License 2.0
-├── README.md
-├── .gitignore / .gitattributes
-├── .github\workflows\build.yml        CI: derle + Release
-├── src\main\java\deepseekai\
-│   ├── DeepSeekAIPlugin.java          Ana eklenti (menuler, akis)
-│   ├── DeepSeekConfig.java            Ayarlar
-│   ├── DeepSeekClient.java            HTTP + JSON istemcisi
-│   ├── DecompilerHelper.java          Decompile + markup -> adresli satirlar
-│   ├── DecompiledContext.java         Fonksiyon baglami (DTO)
-│   ├── Prompt.java                    Sistem/kullanici istemleri
-│   ├── AnalysisOutcome.java           JSON yanitini ayristirma + dogrulama
-│   ├── OutcomeApplier.java            Onerileri programa uygulama (tek transaction)
-│   ├── DeepSeekAnalyzeTask.java       Tek fonksiyon analizi (arka plan gorevi)
-│   ├── DeepSeekApplyTask.java         Onaylanan degisiklikleri uygulayan gorev
-│   ├── DeepSeekResultDialog.java      Sonuc penceresi
-│   ├── DeepSeekOptionsDialog.java     Ayar penceresi
-│   ├── BatchAiOptions.java            Toplu analiz ayarlari
-│   ├── BatchAiEngine.java             Toplu analiz cekirdegi + .c export + onbellek
-│   ├── BatchAiTask.java               Toplu analiz Ghidra gorevi
-│   └── BatchAiDialog.java             Toplu analiz penceresi
-├── src\main\resources\defaultTools\
-│   └── DeepSeekAI.tool                Ghidra arac sablonu (jar'a girer)
-└── ghidra_scripts\                    Teshis betikleri (Script Manager'da gorunur)
-    ├── CheckDeepSeekInstall.java      Kurulum dogrulama
-    ├── CheckPluginRegistration.java   Plugin/paket kayit dogrulama
-    ├── TestDeepSeekApi.java           API anahtari testi
-    ├── DumpFunctionContext.java       Modele giden baglamin dokumu
-    └── TestBatchAnalysis.java         Toplu analiz testi (2 fonksiyon)
-```
-
-Oluşan paketin içeriği:
-
-```
-DeepSeekAI/
-├── extension.properties
-├── Module.manifest
-├── LICENSE
-├── README.md
-├── DeepSeekAI.tool                    (ayrıca jar içinde defaultTools/ altında)
-├── ghidra_scripts/*.java
-└── lib/
-    ├── DeepSeekAI.jar                 deepseekai/*.class + defaultTools/DeepSeekAI.tool
-    └── DeepSeekAI-src.zip             (yalnızca Gradle derlemesinde)
-```
-
-## 7b. Doğrulama (teşhis betikleri)
-
-Eklenti kurulduktan sonra **Window → Script Manager** üzerinden (veya
-`analyzeHeadless ... -postScript <betik>` ile) şu betikler çalıştırılabilir:
-
-| Betik | Ne yapar |
-|---|---|
-| `CheckDeepSeekInstall.java` | Eklenti sınıfını `ClassSearcher` ile arar, Gson/`java.net.http` bağımlılıklarını, JSON ayrıştırmayı ve `DeepSeekAI` araç şablonunun Ghidra tarafından görülüp görülmediğini test eder. **API çağrısı yapmaz.** |
-| `TestDeepSeekApi.java` | API anahtarını ve uç noktayı gerçek çok küçük bir istek ile doğrular (~30 token). Anahtarı `DEEPSEEK_API_KEY` ortam değişkeninden veya betik argümanından alır. |
-| `DumpFunctionContext.java` | Seçili fonksiyon için modele giden bağlamı (adresli kod, sembol tablosu, istem uzunlukları) döker. `api` argümanı verilirse gerçek analiz çağrısını da yapar. |
-
-`CheckDeepSeekInstall.java` beklenen çıktısı:
-
-```
-[OK]   Eklenti sinifi bulundu : deepseekai.DeepSeekAIPlugin
-[OK]   Gson kutuphanesi erisilebilir
-[OK]   java.net.http.HttpClient erisilebilir
-[OK]   deepseekai.DeepSeekConfig orneklenebiliyor
-[OK]   JSON ayristirma calisiyor (1 degisken, 1 yorum, onerilen ad: do_something)
-[OK]   DeepSeekAI arac sablonu bulundu (jar icindeki defaultTools/)
-SONUC: Tum kontroller basarili. Eklenti kullanima hazir.
-```
-
-## 8. Sınırlamalar
-
-- Tek seferde **bir** fonksiyon analiz edilir (imlecin bulunduğu fonksiyon).
-- Tip önerileri yalnızca Ghidra'nın yerleşik tiplerine eşlenebiliyorsa uygulanır
-  (`int`, `uint`, `char`, `undefined4`, …); `struct`/pointer önerileri yok sayılır.
-- Model yanıltıcı olabilir. Kritik analizlerde önerileri doğrulayın.
-
-## 9. GitHub
-
-Depo doğrudan GitHub'a gönderilmeye hazırdır:
-
-- `.gitignore` — `build/`, `dist/`, `.gradle/`, IDE dosyaları ve yerel sır dosyaları hariç.
-- `.gitattributes` — `gradlew` LF, `.bat`/`.ps1` CRLF, ikili dosyalar `binary`.
-- `LICENSE` — Apache License 2.0.
-- `.github/workflows/build.yml` — her push/PR'da eklentiyi Gradle ile derler ve
-  `dist/*.zip` artefaktını yükler; `v*` biçiminde bir etiket atıldığında zip'i
-  Release'e ekler.
-
-```powershell
-git init
-git add .
-git commit -m "DeepSeek AI Ghidra eklentisi: ilk surum"
-git branch -M main
-git remote add origin https://github.com/<kullanici>/<depo>.git
-git push -u origin main
-```
-
-Yeni sürüm yayınlamak:
-
-```powershell
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-> CI, Ghidra'yı GitHub Releases üzerinden indirir. Farklı bir Ghidra sürümü
-> kullanacaksanız `.github/workflows/build.yml` içindeki `GHIDRA_VERSION`
-> değerini güncelleyin.
-
-## 10. Lisans
-
-[Apache License 2.0](LICENSE) — Ghidra eklenti şablonu ile aynı lisans.
+Apache License 2.0 ile lisanslanmıştır. Detaylar için [LICENSE](LICENSE) dosyasına bakınız.

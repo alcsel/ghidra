@@ -34,6 +34,7 @@ ehthumbs.db
 secrets.properties
 *.local.properties
 .deepseek_ghidra.properties
+.ghidra_ai.properties
 .env
 .env.*
 *.key
