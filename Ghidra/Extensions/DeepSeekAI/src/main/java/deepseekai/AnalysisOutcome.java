@@ -68,6 +68,12 @@ public class AnalysisOutcome {
 
 	/** Raw response text from the model (for debugging/inspection). */
 	public String rawResponse = "";
+	public String providerName = "";
+	public String modelName = "";
+
+	public String getSourceInfo() {
+		return (providerName.isEmpty() ? "AI" : providerName) + " (" + (modelName.isEmpty() ? "default" : modelName) + ")";
+	}
 	/** Token usage information. */
 	public String usageText = "";
 	/** True if the response was successfully parsed from JSON. */

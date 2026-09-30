@@ -63,7 +63,7 @@ public class DeepSeekResultDialog extends JDialog {
 		this.context = context;
 		this.outcome = outcome;
 
-		setTitle(function.getName() + " - DeepSeek AI Analysis");
+		setTitle(function.getName() + " - AI Analysis [" + outcome.getSourceInfo() + "]");
 		setModal(false);
 		setLayout(new BorderLayout());
 
@@ -128,7 +128,7 @@ public class DeepSeekResultDialog extends JDialog {
 		title.setAlignmentX(LEFT_ALIGNMENT);
 		panel.add(title);
 
-		JLabel detail = new JLabel("Signature: " + context.signature);
+		JLabel detail = new JLabel("Signature: " + context.signature + "  |  Model: " + outcome.getSourceInfo());
 		detail.setAlignmentX(LEFT_ALIGNMENT);
 		panel.add(detail);
 

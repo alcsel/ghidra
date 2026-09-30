@@ -76,7 +76,7 @@ public class BatchAiDialog extends JDialog {
 		this.program = program;
 		this.config = config;
 
-		setTitle("DeepSeek AI - Batch Analysis");
+		setTitle("AI Assistant - Batch Analysis [" + config.provider.getDisplayName() + " / " + config.model + "]");
 		setModal(true);
 		setLayout(new BorderLayout());
 

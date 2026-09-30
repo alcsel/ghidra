@@ -32,7 +32,7 @@ public class TestBatchAnalysis extends GhidraScript {
 
 	@Override
 	protected void run() throws Exception {
-		if (program == null) {
+		if (currentProgram == null) {
 			println("Please open a program first.");
 			return;
 		}
@@ -63,7 +63,7 @@ public class TestBatchAnalysis extends GhidraScript {
 		options.cacheFile = new File(outDir, "ds_batch_test.cache.json");
 
 		List<Function> all = new ArrayList<>();
-		FunctionIterator iterator = program.getFunctionManager().getFunctions(true);
+		FunctionIterator iterator = currentProgram.getFunctionManager().getFunctions(true);
 		while (iterator.hasNext()) {
 			all.add(iterator.next());
 		}
@@ -71,7 +71,7 @@ public class TestBatchAnalysis extends GhidraScript {
 		List<Function> chosen = options.selectFunctions(all, null);
 
 		println("=== Batch Analysis Test ===");
-		println("Program          : " + program.getName());
+		println("Program          : " + currentProgram.getName());
 		println("Total functions  : " + all.size());
 		println("Selected         : " + chosen.size());
 		for (Function f : chosen) {
@@ -93,7 +93,7 @@ public class TestBatchAnalysis extends GhidraScript {
 		}
 
 		BatchAiEngine.Result result =
-			new BatchAiEngine(program, config, options).run(chosen, monitor);
+			new BatchAiEngine(currentProgram, config, options).run(chosen, monitor);
 		println("");
 		println(result.summary());
 

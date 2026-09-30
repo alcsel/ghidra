@@ -1,0 +1,41 @@
+# Build outputs
+/build/
+/dist/
+/.gradle/
+bin/
+out/
+*.log
+
+# Ghidra project files & analysis caches
+*.gpr
+*.rep/
+*.cache.json
+*_ai_decompiled.c
+
+# IDE files
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+nbproject/
+
+# Operating system files
+Thumbs.db
+Desktop.ini
+desktop.ini
+.DS_Store
+ehthumbs.db
+
+# Secrets & local configuration (API keys must never be committed)
+secrets.properties
+*.local.properties
+.deepseek_ghidra.properties
+.ghidra_ai.properties
+.env
+.env.*
+*.key
+*.token

@@ -54,6 +54,8 @@ public class BatchAiEngine {
 		public int completionTokens;
 		public long elapsedMillis;
 		public File cFile;
+		public String providerName = "";
+		public String modelName = "";
 		public final List<String> problems = new ArrayList<>();
 
 		public int totalTokens() {
@@ -63,6 +65,9 @@ public class BatchAiEngine {
 		public String summary() {
 			StringBuilder sb = new StringBuilder();
 			sb.append("Batch analysis completed.\n\n");
+			if (!providerName.isEmpty()) {
+				sb.append("  AI Provider          : ").append(providerName).append(" (").append(modelName).append(")\n");
+			}
 			sb.append("  Functions to process : ").append(total).append('\n');
 			sb.append("  Sent to API          : ").append(processed).append('\n');
 			sb.append("  Retrieved from cache : ").append(fromCache).append('\n');
@@ -105,7 +110,10 @@ public class BatchAiEngine {
 	/**
 	 * Sequentially processes the given list of functions.
 	 *
-	 * @param functions pre-filtered list of functions to process
+			if (!providerName.isEmpty()) {
+				sb.append("  AI Provider          : ").append(providerName).append(" (").append(modelName).append(")\n");
+			}
+			sb.append("  Functions to process : ").append(total).append('\n');
 	 * @param monitor task progress/cancellation monitor (can be null)
 	 */
 	public Result run(List<Function> functions, TaskMonitor monitor) throws CancelledException {
@@ -376,7 +384,7 @@ public class BatchAiEngine {
 			return;
 		}
 		cWriter.write("/******************************************************************************\n");
-		cWriter.write(" * Ghidra + DeepSeek AI - Decompiled Source Code\n");
+		cWriter.write(" * Ghidra AI Assistant (" + config.provider.getDisplayName() + " / " + config.model + ") - Decompiled Source Code\n");
 		cWriter.write(" *\n");
 		cWriter.write(" * Program  : " + program.getName() + "\n");
 		cWriter.write(" * Language : " + program.getLanguageID() + "\n");

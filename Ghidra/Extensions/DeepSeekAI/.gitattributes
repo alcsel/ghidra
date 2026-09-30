@@ -1,0 +1,25 @@
+# Normalize line endings across all text files
+* text=auto
+
+# Shell scripts must use LF
+gradlew text eol=lf
+*.sh text eol=lf
+
+# Windows scripts must use CRLF
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Sources and configuration files
+*.java text
+*.gradle text
+*.properties text
+*.xml text
+*.md text
+
+# Binary files
+*.jar binary
+*.zip binary
+*.png binary
+*.ico binary
+*.exe binary
+*.dll binary

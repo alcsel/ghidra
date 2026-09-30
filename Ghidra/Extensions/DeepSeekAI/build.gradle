@@ -1,53 +1,60 @@
 /* ###
- * IP: GHIDRA
- *
  * DeepSeek AI - Ghidra Extension
- * Analyzes decompiled functions using DeepSeek AI models.
+ *
+ * Builds the extension using Ghidra's standard extension build script.
+ *
+ * Usage (requires internet to download Gradle distribution):
+ *
+ *   set GHIDRA_INSTALL_DIR=C:\path\to\ghidra_12.1.2_PUBLIC
+ *   gradlew.bat -PGHIDRA_INSTALL_DIR=%GHIDRA_INSTALL_DIR% buildExtension
+ *
+ * Output: dist/ghidra_<version>_<date>_DeepSeekAI.zip
+ *
+ * Note: To build offline without Gradle download, use the build.ps1 script.
  */
 
-if (file("${rootProject.projectDir}/gradle/distributableGhidraExtension.gradle").exists()) {
-	apply from: "${rootProject.projectDir}/gradle/distributableGhidraExtension.gradle"
-	apply from: "${rootProject.projectDir}/gradle/javaProject.gradle"
-	apply plugin: 'eclipse'
-	eclipse.project.name = 'DeepSeekAI'
+//----------------------START "DO NOT MODIFY" SECTION------------------------------
+def ghidraInstallDir
 
-	dependencies {
-		api project(':Base')
-		api project(':Decompiler')
-	}
+if (System.env.GHIDRA_INSTALL_DIR) {
+	ghidraInstallDir = System.env.GHIDRA_INSTALL_DIR
+}
+else if (project.hasProperty("GHIDRA_INSTALL_DIR")) {
+	ghidraInstallDir = project.getProperty("GHIDRA_INSTALL_DIR")
 }
 else {
-	def ghidraInstallDir
+	ghidraInstallDir = "<REPLACE>"
+}
 
-	if (System.env.GHIDRA_INSTALL_DIR) {
-		ghidraInstallDir = System.env.GHIDRA_INSTALL_DIR
-	}
-	else if (project.hasProperty("GHIDRA_INSTALL_DIR")) {
-		ghidraInstallDir = project.getProperty("GHIDRA_INSTALL_DIR")
-	}
-	else {
-		ghidraInstallDir = "<REPLACE>"
-	}
+println "Ghidra installation directory: ${ghidraInstallDir}"
 
-	println "Ghidra installation directory: ${ghidraInstallDir}"
+apply from: new File(ghidraInstallDir).getCanonicalPath() + "/support/buildExtension.gradle"
+//----------------------END "DO NOT MODIFY" SECTION-------------------------------
 
-	apply from: new File(ghidraInstallDir).getCanonicalPath() + "/support/buildExtension.gradle"
+repositories {
+	mavenCentral()
+}
 
-	repositories {
-		mavenCentral()
-	}
+dependencies {
+	// All runtime dependencies are provided by Ghidra (Gson, java.net.http).
+	// Any additional external libraries can be declared here.
+}
 
-	dependencies {
-	}
+// Development and repository files to exclude from the release distribution archive
+buildExtension.exclude '.github/**'
+buildExtension.exclude '.gitignore'
+buildExtension.exclude '.gitattributes'
+buildExtension.exclude 'build.ps1'
+buildExtension.exclude 'build.gradle'
+buildExtension.exclude 'settings.gradle'
+buildExtension.exclude 'gradlew'
+buildExtension.exclude 'gradlew.bat'
+buildExtension.exclude 'gradle/**'
 
-	buildExtension.exclude '.github/**'
-	buildExtension.exclude '.gitignore'
-	buildExtension.exclude '.gitattributes'
-	buildExtension.exclude 'build.ps1'
-
-	buildExtension {
-		from('src/main/resources/defaultTools/DeepSeekAI.tool') {
-			into project.name
-		}
+// Include the tool (.tool) template at the root of the extension zip as well,
+// matching the package layout produced by build.ps1.
+buildExtension {
+	from('src/main/resources/defaultTools/DeepSeekAI.tool') {
+		into project.name
 	}
 }
