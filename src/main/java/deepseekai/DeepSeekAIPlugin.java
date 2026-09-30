@@ -402,6 +402,10 @@ public class DeepSeekAIPlugin extends ProgramPlugin {
 			resultDialog);
 	}
 
+	public DeepSeekConfig getConfig() {
+		return config;
+	}
+
 	public void saveConfig(DeepSeekConfig newConfig) {
 		config = newConfig;
 		if (options != null) {

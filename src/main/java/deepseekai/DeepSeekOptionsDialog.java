@@ -80,6 +80,7 @@ public class DeepSeekOptionsDialog extends JDialog {
 	private final JSpinner timeoutSpinner;
 	private final JSpinner maxCharsSpinner;
 	private final JComboBox<String> languageField;
+	private final JComboBox<String> targetLanguageField;
 
 	// Auto-apply options
 	private final JCheckBox autoComments;
@@ -155,6 +156,14 @@ public class DeepSeekOptionsDialog extends JDialog {
 		});
 		languageField.setEditable(true);
 		languageField.setSelectedItem(config.language);
+
+		targetLanguageField = new JComboBox<>(new String[] {
+			"C / C++ (Idiomatic Auto)",
+			"C (Modern C99 / C11)",
+			"C++ (Modern C++17 / C++20 with Classes & RAII)"
+		});
+		targetLanguageField.setEditable(true);
+		targetLanguageField.setSelectedItem(config.targetLanguage);
 
 		autoComments = new JCheckBox("Auto-apply comments without prompting", config.autoApplyComments);
 		autoRenames = new JCheckBox("Auto-apply variable renames without prompting", config.autoApplyRenames);
@@ -302,6 +311,17 @@ public class DeepSeekOptionsDialog extends JDialog {
 		c.fill = GridBagConstraints.HORIZONTAL;
 		c.weightx = 1.0;
 		connPanel.add(languageField, c);
+
+		c.gridx = 0;
+		c.gridy = row++;
+		c.fill = GridBagConstraints.NONE;
+		c.weightx = 0;
+		connPanel.add(new JLabel("Code Language:"), c);
+
+		c.gridx = 1;
+		c.fill = GridBagConstraints.HORIZONTAL;
+		c.weightx = 1.0;
+		connPanel.add(targetLanguageField, c);
 
 		tabs.addTab("Connection & Model", connPanel);
 
@@ -585,6 +605,8 @@ public class DeepSeekOptionsDialog extends JDialog {
 		config.maxCodeChars = ((Number) maxCharsSpinner.getValue()).intValue();
 		Object language = languageField.getSelectedItem();
 		config.language = language == null ? DeepSeekConfig.DEFAULT_LANGUAGE : language.toString().trim();
+		Object targetLang = targetLanguageField.getSelectedItem();
+		config.targetLanguage = targetLang == null ? DeepSeekConfig.DEFAULT_TARGET_LANG : targetLang.toString().trim();
 		config.autoApplyComments = autoComments.isSelected();
 		config.autoApplyRenames = autoRenames.isSelected();
 		config.autoApplyFunctionName = autoFunctionName.isSelected();

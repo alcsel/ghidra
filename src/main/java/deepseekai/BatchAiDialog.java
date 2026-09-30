@@ -129,7 +129,8 @@ public class BatchAiDialog extends JDialog {
 			base = base.substring(0, base.lastIndexOf('.'));
 		}
 		String home = System.getProperty("user.home", ".");
-		return new File(home, base + "_ai_decompiled.c").getAbsolutePath();
+		String ext = (config != null && config.targetLanguage.contains("C++")) ? ".cpp" : ".c";
+		return new File(home, base + "_ai_reconstructed" + ext).getAbsolutePath();
 	}
 
 	private JPanel buildForm() {

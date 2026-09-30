@@ -40,6 +40,7 @@ public class DeepSeekConfig {
 	public static final String OPT_MAX_TOKENS = "Max response tokens";
 	public static final String OPT_TIMEOUT = "Request timeout (seconds)";
 	public static final String OPT_LANGUAGE = "Response language";
+	public static final String OPT_TARGET_LANG = "Target code language";
 	public static final String OPT_MAX_CHARS = "Max decompiled code chars";
 	public static final String OPT_AUTO_COMMENTS = "Auto apply comments";
 	public static final String OPT_AUTO_RENAMES = "Auto apply variable renames";
@@ -48,6 +49,7 @@ public class DeepSeekConfig {
 	public static final String DEFAULT_BASE_URL = AiProvider.DEEPSEEK.getDefaultBaseUrl();
 	public static final String DEFAULT_MODEL = AiProvider.DEEPSEEK.getDefaultModel();
 	public static final String DEFAULT_LANGUAGE = "English";
+	public static final String DEFAULT_TARGET_LANG = "C / C++ (Idiomatic Auto)";
 	public static final String DEFAULT_API_KEY = "";
 
 	/** Active AI provider. */
@@ -66,7 +68,8 @@ public class DeepSeekConfig {
 	public double temperature = 0.2;
 	public int maxTokens = 8192;
 	public int timeoutSeconds = 180;
-	public int maxCodeChars = 24000;
+	public String targetLanguage = DEFAULT_TARGET_LANG;
+	public int maxCodeChars = 150000;
 	public boolean autoApplyComments = false;
 	public boolean autoApplyRenames = false;
 	public boolean autoApplyFunctionName = false;
@@ -208,6 +211,8 @@ public class DeepSeekConfig {
 			"API request timeout in seconds");
 		registerSafely(options, OPT_LANGUAGE, DEFAULT_LANGUAGE,
 			"Language for explanations and comments");
+		registerSafely(options, OPT_TARGET_LANG, DEFAULT_TARGET_LANG,
+			"Target programming language for reconstructed code (C / C++ / etc.)");
 		registerSafely(options, OPT_MAX_CHARS, Integer.valueOf(24000),
 			"Maximum characters of decompiled code sent to the API");
 		registerSafely(options, OPT_AUTO_COMMENTS, Boolean.FALSE,
@@ -259,6 +264,7 @@ public class DeepSeekConfig {
 		}
 
 		language = options.getString(OPT_LANGUAGE, DEFAULT_LANGUAGE);
+		targetLanguage = options.getString(OPT_TARGET_LANG, DEFAULT_TARGET_LANG);
 		temperature = options.getDouble(OPT_TEMPERATURE, 0.2);
 		maxTokens = options.getInt(OPT_MAX_TOKENS, 8192);
 		timeoutSeconds = options.getInt(OPT_TIMEOUT, 180);
@@ -328,6 +334,7 @@ public class DeepSeekConfig {
 		options.setString(OPT_BASE_URL, baseUrl);
 		options.setString(OPT_MODEL, model);
 		options.setString(OPT_LANGUAGE, language);
+		options.setString(OPT_TARGET_LANG, targetLanguage);
 		options.setDouble(OPT_TEMPERATURE, temperature);
 		options.setInt(OPT_MAX_TOKENS, maxTokens);
 		options.setInt(OPT_TIMEOUT, timeoutSeconds);

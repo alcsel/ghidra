@@ -292,9 +292,17 @@ Write-Ok $zipPath
 if (-not $NoInstall) {
     Write-Step "Installing into Ghidra extensions directory..."
     $targetDir = Join-Path $GhidraDir "Ghidra\Extensions\$ExtName"
-    if (Test-Path $targetDir) { Remove-Item $targetDir -Recurse -Force }
-    Copy-Item $stageDir $targetDir -Recurse -Force
-    Write-Ok $targetDir
+    try {
+        if (Test-Path $targetDir) { Remove-Item $targetDir -Recurse -Force -ErrorAction Stop }
+        Copy-Item $stageDir $targetDir -Recurse -Force -ErrorAction Stop
+        Write-Ok $targetDir
+    }
+    catch {
+        Write-Warn2 "Notice: DeepSeekAI.jar is locked by running Ghidra."
+        $updateDir = "$targetDir.update"
+        Copy-Item $stageDir $updateDir -Recurse -Force
+        Write-Warn2 "Staged update ready in '$updateDir'. Please restart Ghidra to apply."
+    }
 
     Write-Step "Copying tool template into user tools directory..."
     $toolDirs = @()

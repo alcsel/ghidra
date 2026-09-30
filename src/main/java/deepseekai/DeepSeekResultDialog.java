@@ -53,6 +53,7 @@ public class DeepSeekResultDialog extends JDialog {
 	private final Function function;
 	private final DecompiledContext context;
 	private final AnalysisOutcome outcome;
+	private final DeepSeekConfig config;
 
 	private final DefaultTableModel renameModel;
 	private final DefaultTableModel commentModel;
@@ -70,6 +71,7 @@ public class DeepSeekResultDialog extends JDialog {
 		this.function = function;
 		this.context = context;
 		this.outcome = outcome;
+		this.config = plugin.getConfig();
 
 		setTitle(function.getName() + " - AI Analysis [" + outcome.getSourceInfo() + "]");
 		setModal(false);
@@ -99,10 +101,11 @@ public class DeepSeekResultDialog extends JDialog {
 		JTabbedPane tabs = new JTabbedPane();
 
 		// 1. ✨ Clean C Code (Handwritten) - DEFAULT FIRST TAB
-		tabs.addTab("✨ Clean C Code (Handwritten)", buildCleanCodePanel());
+		String codeLang = (config != null && config.targetLanguage.contains("C++")) ? "C++" : "C";
+		tabs.addTab("✨ Clean Code (" + codeLang + ")", buildCleanCodePanel());
 
 		// 2. 🔄 Side-by-Side (Original vs Clean)
-		tabs.addTab("🔄 Side-by-Side View", buildSideBySidePanel());
+		tabs.addTab("🔄 Side-by-Side (Decompiled vs " + codeLang + ")", buildSideBySidePanel());
 
 		// 3. Summary
 		tabs.addTab("Summary", scrollable(textArea(outcome.summary, false, true)));
@@ -138,7 +141,9 @@ public class DeepSeekResultDialog extends JDialog {
 		JPanel toolbar = new JPanel(new BorderLayout());
 		toolbar.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
 
-		JLabel label = new JLabel("✨ Reconstructed human-written C code (Zero uVar / machine artifacts)");
+		String codeLang = (config != null && config.targetLanguage.contains("C++")) ? "C++" : "C";
+		String ext = (config != null && config.targetLanguage.contains("C++")) ? ".cpp" : ".c";
+		JLabel label = new JLabel("✨ Reconstructed " + (config != null ? config.targetLanguage : "C/C++") + " Code (Zero uVar / machine artifacts)");
 		label.setFont(label.getFont().deriveFont(Font.BOLD));
 		toolbar.add(label, BorderLayout.WEST);
 
@@ -147,7 +152,7 @@ public class DeepSeekResultDialog extends JDialog {
 		copyBtn.setToolTipText("Copy reconstructed clean C code to system clipboard");
 		copyBtn.addActionListener(e -> copyCleanCodeToClipboard(copyBtn));
 
-		JButton exportBtn = new JButton("💾 Export .c File");
+		JButton exportBtn = new JButton("💾 Export " + ext + " File");
 		exportBtn.setToolTipText("Save reconstructed clean C code to a .c source file");
 		exportBtn.addActionListener(e -> exportCleanCodeToFile());
 
@@ -230,7 +235,8 @@ public class DeepSeekResultDialog extends JDialog {
 		}
 		JFileChooser chooser = new JFileChooser();
 		chooser.setDialogTitle("Export Clean C Code");
-		String defaultName = (!outcome.functionName.isEmpty() ? outcome.functionName : function.getName()) + ".c";
+		String ext = (config != null && config.targetLanguage.contains("C++")) ? ".cpp" : ".c";
+		String defaultName = (!outcome.functionName.isEmpty() ? outcome.functionName : function.getName()) + ext;
 		chooser.setSelectedFile(new File(defaultName));
 		int result = chooser.showSaveDialog(this);
 		if (result == JFileChooser.APPROVE_OPTION) {
