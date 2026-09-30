@@ -88,13 +88,19 @@ public class DeepSeekApplyTask extends Task {
 			List<AnalysisOutcome.VarRename> renames,
 			List<AnalysisOutcome.LineComment> comments) {
 		AnalysisOutcome copy = new AnalysisOutcome();
+		copy.cleanCCode = source.cleanCCode;
 		copy.summary = source.summary;
 		copy.functionName = source.functionName;
 		copy.functionComment = source.functionComment;
 		copy.rawResponse = source.rawResponse;
+		copy.providerName = source.providerName;
+		copy.modelName = source.modelName;
+		copy.usageText = source.usageText;
 		copy.parsedFromJson = source.parsedFromJson;
 		copy.varRenames.addAll(renames);
 		copy.lineComments.addAll(comments);
+		copy.hardParts.addAll(source.hardParts);
+		copy.uncertainties.addAll(source.uncertainties);
 		return copy;
 	}
 }

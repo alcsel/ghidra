@@ -23,10 +23,10 @@ import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.listing.Program;
 
 /**
- * Structured outcome returned by the DeepSeek analysis.
+ * Structured outcome returned by the AI analysis.
  * <p>
  * Parses the JSON response received from the model and validates addresses,
- * variable names, and confidence values.
+ * variable names, clean reconstructed C code, and confidence values.
  */
 public class AnalysisOutcome {
 
@@ -61,6 +61,7 @@ public class AnalysisOutcome {
 	public String summary = "";
 	public String functionName = "";
 	public String functionComment = "";
+	public String cleanCCode = "";
 	public final List<LineComment> lineComments = new ArrayList<>();
 	public final List<VarRename> varRenames = new ArrayList<>();
 	public final List<HardPart> hardParts = new ArrayList<>();
@@ -110,6 +111,19 @@ public class AnalysisOutcome {
 		outcome.summary = string(root, "summary");
 		outcome.functionComment = string(root, "function_comment");
 		outcome.functionName = sanitizeFunctionName(string(root, "function_name"));
+
+		// Parse reconstructed clean C code
+		String clean = string(root, "clean_c_code");
+		if (clean.isEmpty()) {
+			clean = string(root, "reconstructed_code");
+		}
+		if (clean.isEmpty()) {
+			clean = string(root, "clean_code");
+		}
+		if (clean.isEmpty()) {
+			clean = string(root, "code");
+		}
+		outcome.cleanCCode = cleanCodeString(clean);
 
 		AddressSpace space = program == null ? null
 				: program.getAddressFactory().getDefaultAddressSpace();
@@ -198,6 +212,78 @@ public class AnalysisOutcome {
 		}
 
 		return outcome;
+	}
+
+	/** Cleans markdown code fences and stray address markers from C code string. */
+	static String cleanCodeString(String code) {
+		if (code == null) {
+			return "";
+		}
+		String trimmed = code.trim();
+		if (trimmed.startsWith("```")) {
+			int firstNl = trimmed.indexOf('\n');
+			int lastFence = trimmed.lastIndexOf("```");
+			if (firstNl >= 0 && lastFence > firstNl) {
+				trimmed = trimmed.substring(firstNl + 1, lastFence).trim();
+			}
+			else if (firstNl >= 0) {
+				trimmed = trimmed.substring(firstNl + 1).trim();
+			}
+		}
+		// Strip any address tags [0x...] that may have leaked
+		trimmed = trimmed.replaceAll("(?m)^\\s*\\[0x[0-9a-fA-F]+\\]\\s*", "");
+		return trimmed;
+	}
+
+	/**
+	 * Returns reconstructed clean human-written C code.
+	 * If the AI model provided cleanCCode, it is returned.
+	 * Otherwise, a programmatic fallback clean-up is performed on the raw decompiled code,
+	 * stripping address tags, replacing all variables, and renaming any leftover uVar artifacts.
+	 */
+	public String getOrGenerateCleanCode(DecompiledContext context) {
+		if (cleanCCode != null && !cleanCCode.trim().isEmpty()) {
+			return cleanCCode;
+		}
+		if (context == null) {
+			return "";
+		}
+		String source = context.rawCode;
+		if (source == null || source.trim().isEmpty()) {
+			source = context.annotatedCode;
+		}
+		if (source == null || source.trim().isEmpty()) {
+			return "";
+		}
+
+		// Programmatic fallback reconstruction
+		String code = source.replaceAll("\\[0x[0-9a-fA-F]+\\]\\s*", "");
+
+		// Rename function if suggested
+		if (!functionName.isEmpty() && context.function != null) {
+			code = code.replaceAll("\\b" + Pattern.quote(context.function.getName()) + "\\b", functionName);
+		}
+
+		// Replace all variables that were mapped in varRenames
+		for (VarRename r : varRenames) {
+			if (r.oldName != null && !r.oldName.isEmpty() && r.newName != null && !r.newName.isEmpty()) {
+				code = code.replaceAll("\\b" + Pattern.quote(r.oldName) + "\\b", r.newName);
+			}
+		}
+
+		// Eliminate any remaining machine decompiler artifacts
+		code = code.replaceAll("\\bpuVar(\\d+)\\b", "p_val_$1");
+		code = code.replaceAll("\\buVar(\\d+)\\b", "u_val_$1");
+		code = code.replaceAll("\\biVar(\\d+)\\b", "idx_$1");
+		code = code.replaceAll("\\bbVar(\\d+)\\b", "flag_$1");
+		code = code.replaceAll("\\blVar(\\d+)\\b", "num_$1");
+		code = code.replaceAll("\\bparam_(\\d+)\\b", "arg_$1");
+		code = code.replaceAll("\\blocal_([0-9a-fA-F]+)\\b", "var_$1");
+		code = code.replaceAll("\\bunaff_([A-Za-z0-9_]+)\\b", "reg_$1");
+		code = code.replaceAll("\\bundefined(\\d+)\\b", "uint$1_t");
+		code = code.replaceAll("\\bundefined\\b", "void*");
+
+		return code;
 	}
 
 	/** Extracts JSON object text from model response (stripping markdown code fences). */

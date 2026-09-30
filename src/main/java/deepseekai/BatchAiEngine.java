@@ -339,6 +339,7 @@ public class BatchAiEngine {
 		entry.addProperty("suggestedName", outcome.functionName);
 		entry.addProperty("summary", outcome.summary);
 		entry.addProperty("rawResponse", outcome.rawResponse);
+		entry.addProperty("cleanCCode", outcome.getOrGenerateCleanCode(null));
 		entries().add(key, entry);
 		cacheDirty++;
 	}
@@ -485,8 +486,12 @@ public class BatchAiEngine {
 				String.join(" | ", outcome.uncertainties)));
 		}
 		cWriter.write("\n");
-		cWriter.write(context.rawCode);
-		if (!context.rawCode.endsWith("\n")) {
+		String codeToWrite = outcome != null ? outcome.getOrGenerateCleanCode(context) : context.rawCode;
+		if (codeToWrite == null || codeToWrite.trim().isEmpty()) {
+			codeToWrite = context.rawCode;
+		}
+		cWriter.write(codeToWrite);
+		if (!codeToWrite.endsWith("\n")) {
 			cWriter.write("\n");
 		}
 		cWriter.write("\n");

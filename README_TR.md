@@ -30,6 +30,8 @@ Ghidra decompiler arayüzüne doğrudan entegre olan, tüm majör Büyük Dil Mo
 
 | Yetenek | Açıklama |
 | :--- | :--- |
+| **✨ Elle Yazılmış Temiz C Kodu** | Decompile çıktısını **SIFIR derleyici artığı** (uVar, param_, local_) içeren, elle yazılmış temiz C/C++ koduna dönüştürür. Tek tıkla panoya kopyalama ve .c dışa aktarma içerir. |
+| **🔄 Yan Yana Karşılaştırma** | Orijinal Ghidra decompile çıktısı ile AI tarafından yeniden oluşturulan temiz kodu yan yana böler. |
 | **Çoklu Sağlayıcı Merkezi** | OpenAI, Claude, Gemini, DeepSeek, Ollama, Groq ve diğerleri arasında tek tıkla geçiş yapın. |
 | **Dinamik Model Keşfi** | Ayarlar penceresindeki **Modelleri Çek 🔄** butonu ile yerel Ollama veya sunucudaki yüklü modelleri anında listeleyin. |
 | **Sağlayıcı Bazlı Anahtar Belleği** | Sağlayıcılar arasında geçiş yaptığınızda girdiğiniz API anahtarları, özel URL ve seçtiğiniz model kaybolmaz. |

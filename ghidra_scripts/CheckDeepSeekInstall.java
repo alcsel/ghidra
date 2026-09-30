@@ -10,7 +10,7 @@
  *   1. deepseekai.DeepSeekAIPlugin class is discoverable via ClassSearcher.
  *   2. Gson and java.net.http runtime dependencies are resolvable.
  *   3. Multi-AI provider classes (AiProvider, ApiProtocol, DeepSeekConfig, DeepSeekClient) are operational.
- *   4. JSON parsing and outcome mapping works properly.
+ *   4. JSON parsing and clean C code reconstruction works properly.
  *   5. AI tool template (.tool) is visible to Ghidra.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,6 +41,7 @@ public class CheckDeepSeekInstall extends GhidraScript {
 		checkDependencies();
 		checkMultiAiProviders();
 		checkJsonParsing();
+		checkCleanCodeReconstruction();
 		checkToolTemplate();
 
 		println("");
@@ -124,6 +125,7 @@ public class CheckDeepSeekInstall extends GhidraScript {
 	/** Verifies that AnalysisOutcome.parse operates correctly. */
 	private void checkJsonParsing() {
 		String sample = "{\"summary\":\"example explanation\",\"function_name\":\"do_something\"," +
+			"\"clean_c_code\":\"int do_something(int count) { return count * 2; }\"," +
 			"\"line_comments\":[{\"address\":\"0x401000\",\"comment\":\"example comment\"," +
 			"\"confidence\":0.9}]," +
 			"\"variable_renames\":[{\"old_name\":\"uVar1\",\"new_name\":\"counter\"," +
@@ -136,12 +138,14 @@ public class CheckDeepSeekInstall extends GhidraScript {
 
 			Field summaryField = outcomeClass.getField("summary");
 			Field nameField = outcomeClass.getField("functionName");
+			Field cleanCodeField = outcomeClass.getField("cleanCCode");
 			Field renamesField = outcomeClass.getField("varRenames");
 			Field commentsField = outcomeClass.getField("lineComments");
 			Field parsedField = outcomeClass.getField("parsedFromJson");
 
 			String summary = String.valueOf(summaryField.get(outcome));
 			String name = String.valueOf(nameField.get(outcome));
+			String cleanCode = String.valueOf(cleanCodeField.get(outcome));
 			int renames = ((List<?>) renamesField.get(outcome)).size();
 			int comments = ((List<?>) commentsField.get(outcome)).size();
 			boolean parsed = Boolean.TRUE.equals(parsedField.get(outcome));
@@ -158,16 +162,57 @@ public class CheckDeepSeekInstall extends GhidraScript {
 				fail("Function name field was not parsed correctly: " + name);
 				return;
 			}
+			if (!cleanCode.contains("do_something")) {
+				fail("Clean C code was not parsed correctly: " + cleanCode);
+				return;
+			}
 			if (renames != 1 || comments != 1) {
 				fail("Unexpected collection size: renames=" + renames + " comments=" +
 					comments);
 				return;
 			}
-			println("[OK]   JSON parsing works (1 variable, 1 comment, suggested name: " +
+			println("[OK]   JSON parsing works (clean_c_code, 1 variable, 1 comment, suggested name: " +
 				name + ")");
 		}
 		catch (Throwable t) {
 			fail("JSON parsing test failed with exception: " + t);
+		}
+	}
+
+	/** Verifies that clean C code fallback reconstructor strips artifacts and uVar names. */
+	private void checkCleanCodeReconstruction() {
+		try {
+			Class<?> outcomeClass = Class.forName("deepseekai.AnalysisOutcome");
+			Class<?> contextClass = Class.forName("deepseekai.DecompiledContext");
+			Object context = contextClass.getDeclaredConstructor().newInstance();
+
+			Field rawCodeField = contextClass.getField("rawCode");
+			rawCodeField.set(context, "[0x00401000] int uVar1 = param_1 + 5;\n[0x00401004] return uVar1;");
+
+			Method parse = outcomeClass.getMethod("parse", String.class, Program.class);
+			// Sample without clean_c_code to test programmatic fallback
+			String sample = "{\"summary\":\"test\",\"variable_renames\":[{\"old_name\":\"uVar1\",\"new_name\":\"total_sum\"}]}";
+			Object outcome = parse.invoke(null, sample, (Program) null);
+
+			Method getClean = outcomeClass.getMethod("getOrGenerateCleanCode", contextClass);
+			String reconstructed = (String) getClean.invoke(outcome, context);
+
+			if (reconstructed.contains("uVar1")) {
+				fail("Fallback clean code still contains uVar1: " + reconstructed);
+				return;
+			}
+			if (!reconstructed.contains("total_sum")) {
+				fail("Fallback clean code did not rename uVar1 to total_sum: " + reconstructed);
+				return;
+			}
+			if (reconstructed.contains("[0x")) {
+				fail("Fallback clean code still contains [0x...] address tags: " + reconstructed);
+				return;
+			}
+			println("[OK]   Clean C Code reconstruction verified (0 uVar, 0 address tags, variables renamed)");
+		}
+		catch (Throwable t) {
+			fail("Clean C Code reconstruction check failed: " + t);
 		}
 	}
 
